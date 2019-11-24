@@ -56,6 +56,9 @@ class LinuxMonitorDAO:
 
             Mu.log_warning(self.__logger, "Command:{0} execution failed{1}, {2}".format(command, server_name, ex))
 
+    def restart_agent(self, ssh):
+        self.__ssh_exec_command("python xxxxx", ssh)
+
     def collect_disk_info(self, ssh, mount_point):
         return self.__ssh_exec_command(
             "df -l| grep .*'\s'{0}$ | {1}".format(mount_point, "awk '{print $(NF-4) \" \" $(NF-2)}'"), ssh)

@@ -7,6 +7,15 @@ import binascii
 import os
 from errors import MonitorUtilError
 from datetime import datetime
+from enum import Enum
+
+
+class InfoType(Enum):
+    """Message info type for different resources"""
+    MEMORY = 1
+    CPU = 2
+    DISK = 3
+    INSTANCE = 4
 
 
 class MonitorConst:
@@ -15,13 +24,19 @@ class MonitorConst:
     __config = configparser.ConfigParser()
     __config.read(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config/configuration.ini"))
     # ------ logger ------
-    LOGGER_MONITOR_MEM = "monitor.mem"
-    LOGGER_MONITOR_DISK = "monitor.disk"
-    LOGGER_MONITOR_CPU = "monitor.cpu"
-    LOGGER_MONITOR_INSTANCE = "monitor.instance"
+    LOGGER_MONITOR_CONFIG_MGR = "monitor.config_mgr"
+    LOGGER_MONITOR_COORDINATOR = "monitor.coordinator"
+    LOGGER_MONITOR_ANALYZER = "monitor.analyzer"
+    LOGGER_MONITOR_OPERATOR = "monitor.operator"
+    LOGGER_AGENT_MSG_PRODUCER = "monitor.agent.producer"
+    LOGGER_MONITOR_MEM = "monitor.agent.mem"
+    LOGGER_MONITOR_DISK = "monitor.agent.disk"
+    LOGGER_MONITOR_CPU = "monitor.agent.cpu"
+    LOGGER_MONITOR_INSTANCE = "monitor.agent.instance"
+
     LOGGER_MONITOR_EXTENSION = "monitor.extension"
-    LOGGER_MONITOR_SERVER_OS_OPERATOR = "monitor.server_os_op"
-    LOGGER_MONITOR_SERVER_DB_OPERATOR = "monitor.server_db_op"
+    LOGGER_MONITOR_SERVER_OS_OPERATOR = "monitor.os_operator"
+    LOGGER_MONITOR_SERVER_DB_OPERATOR = "monitor.db_operator"
     LOGGER_MONITOR_TEST = "monitor.test"
     LOGGER_MONITOR_UTILITY = "monitor.utility"
     LOGGER_MONITOR_INIT_SERVER = "monitor.init.server"
@@ -83,10 +98,15 @@ class MonitorConst:
 
     # -- Kafka Topic
     TOPIC_CONFIGURATION = "configuration"
-
+    TOPIC_SERVER_MONITORING_INFO = "monitoring_info"
+    TOPIC_SERVER_MONITORING_FILTERED_INFO = "monitoring_filtered_data"
+    MONITOR_GROUP_ID = "monitor_group"
     # -- db configuration
     _DB_CONFIGURATION_COMPONENT_GLOBAL = "GLOBAL"
     _DB_CONFIGURATION_COMPONENT_MONITOR = "MONITOR"
+
+    DB_CONFIGURATION_SERVER = "SERVER"
+
     # ------ get values from configuration file ------
     @staticmethod
     def get_email_admin():
@@ -144,6 +164,14 @@ class MonitorConst:
     @staticmethod
     def get_hana_password():
         return MonitorConst.__config.get("monitor.db", "hana_password")
+
+    @staticmethod
+    def get_kafka_server():
+        return MonitorConst.__config.get("monitor.mb", "kafka_server")
+
+    @staticmethod
+    def get_kafka_port():
+        return MonitorConst.__config.get("monitor.mb", "kafka_port")
 
     @staticmethod
     def __get_db_configuration_not_real_time(name, component, db_operator, logger=None):

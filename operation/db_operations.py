@@ -59,9 +59,10 @@ class HANAMonitorDAO:
         # "WHERE LOCATION_ID = {0}".format(location_id))
         return self.__query_select(query)
 
-    def get_server_full_names(self, location_id):
+    def get_server_full_names(self, location_id=None):
         query = ("SELECT SERVER_ID, SERVER_FULL_NAME, MOUNT_POINT, OS FROM HANA_OS_MONITOR.SERVER_INFO "
-                 "WHERE LOCATION_ID = {0} ORDER BY SERVER_ID".format(location_id))
+                 "WHERE LOCATION_ID = {0} ORDER BY SERVER_ID".format(location_id)) if location_id else \
+            "SELECT SERVER_ID, SERVER_FULL_NAME, MOUNT_POINT, OS FROM HANA_OS_MONITOR.SERVER_INFO ORDER BY SERVER_ID"
         return self.__query_select(query)
 
     def get_current_process_status(self, location_id):
@@ -149,9 +150,11 @@ class HANAMonitorDAO:
                  "(UPPER(B.ADMIN) = 'X' OR UPPER(B.SUPER_ADMIN) = 'X')".format(location_id))
         return self.__query_select(query)
 
-    def get_configuration(self, component, name):
+    def get_configuration(self, component=None, name=None):
+
         query = ("SELECT VALUE FROM HANA_OS_MONITOR.MONITOR_CONFIGURATION "
-                 "WHERE CONFIGURATION = '{0}' AND COMPONENT = '{1}'".format(name, component))
+                 "WHERE CONFIGURATION = '{0}' AND COMPONENT = '{1}'".format(name, component)) \
+            if component and name else "SELECT CONFIGURATION, VALUE FROM HANA_OS_MONITOR.MONITOR_CONFIGURATION"
         return self.__query_select(query)
 
     # ----------------------------Below is for update/insert/upsert--------------------------------------
@@ -239,7 +242,7 @@ class HANAMonitorDAO:
         param_list = [(check_id, server_id, location_id, status, stage, message)]
         self.__query_insert_batch(query, param_list)
 
-    def update_server_monitoring_info(self, check_id, server_info, server_id):
+    def update_server_monitoring_info(self, check_id, server_id, server_info):
         query = ("UPSERT HANA_OS_MONITOR.M_SERVER_INFO "
                  "(CHECK_ID,SERVER_ID,DISK_TOTAL,DISK_FREE,MEM_TOTAL,MEM_FREE,CPU_UTILIZATION) "
                  "VALUES (?,?,?,?,?,?,?) WITH PRIMARY KEY")
@@ -247,32 +250,32 @@ class HANAMonitorDAO:
                        server_info["MEM_TOTAL"], server_info["MEM_FREE"], server_info["CPU_UTILIZATION"])]
         self.__query_insert_batch(query, param_list)
 
-    def update_cpu_monitoring_info(self, check_id, server_id, top_5_cpu_consumers):
+    def update_cpu_monitoring_info(self, check_id, server_id, cpu_info):
         query = ("INSERT INTO HANA_OS_MONITOR.M_CPU_INFO "
-                 "(CHECK_ID,USER_NAME,SERVER_ID,PROCESS_ID,PROCESS_COMMAND,CPU) VALUES (?,?,?,?,?,?)")
-        param_list = [(check_id, row["USER_NAME"], server_id, row["PROCESS_ID"], row["PROCESS_COMMAND"], row["CPU"])
-                      for row in top_5_cpu_consumers]
+                 "(CHECK_ID,SERVER_ID,USER_NAME,CPU) VALUES (?,?,?,?)")
+        # { user : usage }
+        param_list = [(check_id, server_id, key, value) for key, value in cpu_info.items()]
         self.__query_insert_batch(query, param_list)
 
-    def update_mem_monitoring_info(self, check_id, server_id, top_5_mem_consumers):
-        query = ("INSERT INTO HANA_OS_MONITOR.M_MEM_INFO "
-                 "(CHECK_ID,USER_NAME,SERVER_ID,PROCESS_ID,PROCESS_COMMAND,MEM) VALUES (?,?,?,?,?,?)")
-        param_list = [(check_id, row["USER_NAME"], server_id, row["PROCESS_ID"], row["PROCESS_COMMAND"], row["MEM"])
-                      for row in top_5_mem_consumers]
+    def update_mem_monitoring_info(self, check_id, server_id, mem_info):
+        query = "INSERT INTO HANA_OS_MONITOR.M_MEM_INFO (CHECK_ID,SERVER_ID,USER_NAME,MEM) VALUES (?,?,?,?)"
+        # { user : usage }
+        param_list = [(check_id, server_id, key, value) for key, value in mem_info.items()]
         self.__query_insert_batch(query, param_list)
 
-    def update_disk_monitoring_info(self, check_id, server_id, disk_consuming_info):
+    def update_disk_monitoring_info(self, check_id, server_id, disk_info):
         query = ("INSERT INTO HANA_OS_MONITOR.M_DISK_INFO "
                  "(CHECK_ID,SERVER_ID,FOLDER,USER_NAME,DISK_USAGE_KB) VALUES (?,?,?,?,?)")
-        param_list = [(check_id, server_id, row["FOLDER"], row["USER_NAME"], row["DISK_USAGE_KB"])
-                      for row in disk_consuming_info]
+        # { folder : { user : usage } }
+        param_list = [(check_id, server_id, key, next(iter(value.keys())), next(iter(value.values())))
+                      for key, value in disk_info.items()]
         self.__query_insert_batch(query, param_list)
 
     def update_instance_info(self, check_id, server_id, instance_info):
         query = ("INSERT INTO HANA_OS_MONITOR.M_INSTANCE_INFO"
                  "(CHECK_ID,SERVER_ID,SID,REVISION,INSTANCE_NUM,HOST,EDITION) VALUES (?,?,?,?,?,?,?)")
         param_list = [(check_id, server_id, r["SID"], r["REVISION"], r["INSTANCE_NUM"], r["HOST"], r["EDITION"])
-                      for r in instance_info]
+                      for r in instance_info.values()]
 
         self.__query_insert_batch(query, param_list)
 
