@@ -101,6 +101,11 @@ class MonitorConst:
     TOPIC_SERVER_MONITORING_INFO = "monitoring_info"
     TOPIC_SERVER_MONITORING_FILTERED_INFO = "monitoring_filtered_data"
     MONITOR_GROUP_ID = "monitor_group"
+
+    MSG_TYPE = "type"
+    MSG_INFO = "info"
+    MSG_HEADER = "header"
+    MSG_ENDING = "ending"
     # -- db configuration
     _DB_CONFIGURATION_COMPONENT_GLOBAL = "GLOBAL"
     _DB_CONFIGURATION_COMPONENT_MONITOR = "MONITOR"

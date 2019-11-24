@@ -25,8 +25,8 @@ class DBOperator(threading.Thread):
             InfoType.INSTANCE.value: self._db_operator.update_instance_monitoring_info
         }
         for msg in consumer:
-            if msg and msg.value and "type" in msg.value:
-                operators[msg.value["type"]](msg.value)
+            if msg and msg.value and Mc.MSG_TYPE in msg.value:
+                operators[msg.value[Mc.MSG_TYPE]](msg.value)
 
     def run(self):
         """run the thread"""
@@ -82,25 +82,25 @@ class HANAOperatorService:
         cid = info[Mc.FIELD_CHECK_ID]
         sid = info[Mc.FIELD_SERVER_ID]
         self.__update_server_info(cid, sid, mem_total=info[Mc.FIELD_MEM_TOTAL], mem_free=info[Mc.FIELD_MEM_FREE])
-        self.__monitor_dao.update_mem_monitoring_info(cid, sid, info["info"])
+        self.__monitor_dao.update_mem_monitoring_info(cid, sid, info[Mc.MSG_INFO])
 
     def update_disk_monitoring_info(self, info):
         cid = info[Mc.FIELD_CHECK_ID]
         sid = info[Mc.FIELD_SERVER_ID]
         self.__update_server_info(cid, sid, disk_total=info[Mc.FIELD_DISK_TOTAL], disk_free=info[Mc.FIELD_DISK_FREE])
-        self.__monitor_dao.update_disk_monitoring_info(cid, sid, info["info"])
+        self.__monitor_dao.update_disk_monitoring_info(cid, sid, info[Mc.MSG_INFO])
 
     def update_cpu_monitoring_info(self, info):
         cid = info[Mc.FIELD_CHECK_ID]
         sid = info[Mc.FIELD_SERVER_ID]
         self.__update_server_info(cid, sid, cpu_usage=info[Mc.FIELD_CPU_UTILIZATION])
-        self.__monitor_dao.update_cpu_monitoring_info(cid, sid, info["info"])
+        self.__monitor_dao.update_cpu_monitoring_info(cid, sid, info[Mc.MSG_INFO])
 
     def update_instance_monitoring_info(self, info):
         cid = info[Mc.FIELD_CHECK_ID]
         sid = info[Mc.FIELD_SERVER_ID]
-        self.__monitor_dao.update_instance_info(cid, sid, info["info"])
+        self.__monitor_dao.update_instance_info(cid, sid, info[Mc.MSG_INFO])
 
 
 if __name__ == '__main__':
-    analyzer = DBOperator().start()
+    DBOperator().start()

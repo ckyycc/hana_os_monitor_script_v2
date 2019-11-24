@@ -5,7 +5,7 @@ from errors import MonitorDBOpError
 import threading
 import time
 
-from operation.os_operations import LinuxMonitorDAO
+from operation.os_operations import LinuxOperator
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
 from operation.db_operations import HANAMonitorDAO
@@ -24,6 +24,7 @@ class MonitorCoordinator(threading.Thread):
         super().__init__()
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_COORDINATOR)
         self.__configs = {}
+        self.__os_operator = LinuxOperator()
 
     def __coordinating_monitors(self, consumer):
         """
@@ -38,17 +39,31 @@ class MonitorCoordinator(threading.Thread):
                 servers = self.__configs.get(Mc.DB_CONFIGURATION_SERVER, [])
                 for server in servers:
                     self.__restart_agent(server[Mc.FIELD_SERVER_FULL_NAME],
+                                         server[Mc.FIELD_SERVER_ID],
                                          server[Mc.FIELD_MOUNT_POINT],
-                                         server[Mc.FIELD_OS])
+                                         self.__configs.get("CHECK_INTERVAL_MEM_INT", 3600),
+                                         self.__configs.get("CHECK_INTERVAL_CPU_INT", 3600),
+                                         self.__configs.get("CHECK_INTERVAL_DISK_INT", 3600),
+                                         self.__configs.get("CHECK_INTERVAL_INSTANCE_INT", 3600))
 
-    def __restart_agent(self, server, mounting_point, os):
+    def __restart_agent(self,
+                        server,
+                        server_id,
+                        mount_point,
+                        mem_interval,
+                        cpu_interval,
+                        disk_interval,
+                        instance_interval):
         ssh = self.__open_ssh_connection(server,
                                          Mc.get_ssh_default_user(),
                                          Mu.get_decrypt_string(Mc.get_rsa_key_file(), Mc.get_ssh_default_password()))
 
         if ssh is not None:
             Mu.log_debug(self.__logger, "Restarting {0}".format(server))
-            LinuxMonitorDAO().restart_agent(ssh)
+            self.__os_operator.restart_agent(ssh,
+                                             server_id,
+                                             mount_point,
+                                             mem_interval, cpu_interval, disk_interval, instance_interval)
 
     def __update_configs(self, config):
         """
@@ -69,20 +84,20 @@ class MonitorCoordinator(threading.Thread):
 
     def __open_ssh_connection(self, server_name, user_name, user_password):
         Mu.log_debug(self.__logger, "Trying to connect {0}.".format(server_name))
-        ssh = LinuxMonitorDAO().open_ssh_connection(server_name, user_name, user_password)
+        ssh = self.__os_operator.open_ssh_connection(server_name, user_name, user_password)
         if ssh is not None:
             Mu.log_debug(self.__logger, "Connected {0}.".format(server_name))
         return ssh
 
     def __close_ssh_connection(self, ssh):
-        LinuxMonitorDAO().close_ssh_connection(ssh)
+        self.__os_operator.close_ssh_connection(ssh)
 
     def run(self):
         """run the thread"""
         while True:
             consumer = KafkaConsumer(Mc.TOPIC_CONFIGURATION,
                                      group_id=Mc.MONITOR_GROUP_ID,
-                                     bootstrap_servers=['localhost:9092'],
+                                     bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
                                      value_deserializer=lambda m: json.loads(m.decode('ascii')))
             self.__coordinating_monitors(consumer)
             Mu.log_warning(self.__logger, "Topic is empty or connection is lost. Trying to reconnect...")

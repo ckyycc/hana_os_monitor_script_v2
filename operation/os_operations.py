@@ -3,7 +3,7 @@ from util import MonitorConst as Mc
 import paramiko
 
 
-class LinuxMonitorDAO:
+class LinuxOperator:
     """Operations for Linux, root class for RedHat and SUSE"""
     def __init__(self):
         # get logging
@@ -56,8 +56,12 @@ class LinuxMonitorDAO:
 
             Mu.log_warning(self.__logger, "Command:{0} execution failed{1}, {2}".format(command, server_name, ex))
 
-    def restart_agent(self, ssh):
-        self.__ssh_exec_command("python xxxxx", ssh)
+    def restart_agent(self, ssh, server_id, mount_point, mem_interval, cpu_interval, disk_interval, instance_interval):
+        # TODO agent path
+        self.__ssh_exec_command(
+            "python /usr/sap/CK/home/tmp/py_project_25/agent.py --server_id={0} --mount_point={1} "
+            "--m_frequency={2} --d_frequency={3} --c_frequency={4} --d_frequency={5}".format(
+                server_id, mount_point, mem_interval, cpu_interval, disk_interval, instance_interval), ssh)
 
     def collect_disk_info(self, ssh, mount_point):
         return self.__ssh_exec_command(
@@ -173,14 +177,14 @@ class LinuxMonitorDAO:
         pass
 
 
-class SUSEMonitorDAO(LinuxMonitorDAO):
+class SUSEOperator(LinuxOperator):
     """Operations for SUSE Linux
     Will overwrite some functions which need SUSE specific command/parsing"""
     def __init__(self):
         super().__init__()
 
 
-class RedHatMonitorDAO(LinuxMonitorDAO):
+class RedHatOperator(LinuxOperator):
     """Operations for RedHat Linux
     Will overwrite some functions which need RedHat specific command/parsing"""
     def __init__(self):

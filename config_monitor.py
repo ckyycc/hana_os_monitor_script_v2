@@ -17,9 +17,9 @@ class ConfigMonitor(threading.Thread):
     """
     def __init__(self):
         super().__init__()
-        # TODO: kafka address might be changed, needs to check during monitoring, or config it in configuration.ini
-        self.__producer = KafkaProducer(bootstrap_servers=['localhost:9092'],
-                                        value_serializer=lambda v: json.dumps(v).encode('ascii'))
+        self.__producer = KafkaProducer(
+            bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
+            value_serializer=lambda v: json.dumps(v).encode('ascii'))
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_CONFIG_MGR)
         self.__topic = Mc.TOPIC_CONFIGURATION
         self.__configs = {}

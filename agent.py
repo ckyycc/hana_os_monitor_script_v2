@@ -8,6 +8,7 @@ import subprocess
 from kafka import KafkaProducer
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
+from util import InfoType
 from errors import MonitorDBOpError
 from errors import MonitorOSOpError
 from abc import ABC, abstractmethod
@@ -27,6 +28,7 @@ class Monitor(ABC, Thread):
         super().__init__()
         self._os_operator = HANAServerOSOperatorService.instance()
         self._msg_producer = MsgProducerService.instance()
+        self._server_name = self._os_operator.get_host_name()
 
     def accept(self, dispatcher):
         """Accept the visitors to perform the DB operations"""
@@ -59,16 +61,15 @@ class Monitor(ABC, Thread):
 class MemoryMonitor(Monitor):
     """Monitoring for Memory, get all the detail of memory consumption for all HANA related users"""
 
-    def __init__(self, server_id, server_name, interval):
+    def __init__(self, server_id, interval):
         super().__init__()
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_MEM)
         self.__server_id = server_id
-        self.__server_name = server_name
         self.__interval = interval
 
     def monitoring(self, check_id):
         server_id = self.__server_id
-        server_name = self.__server_name
+        server_name = self._server_name
 
         Mu.log_debug(self.__logger, "[{0}]Memory Monitoring begin...".format(check_id))
         Mu.log_debug(self.__logger, "Trying to get memory overview of {0}".format(server_name))
@@ -98,16 +99,15 @@ class MemoryMonitor(Monitor):
 class CPUMonitor(Monitor):
     """Monitoring for CPU, get top 5 CPU consumers that relative to HANA by user from all the servers"""
 
-    def __init__(self, server_id, server_name, interval):
+    def __init__(self, server_id, interval):
         super().__init__()
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_CPU)
         self.__server_id = server_id
-        self.__server_name = server_name
         self.__interval = interval
 
     def monitoring(self, check_id):
         server_id = self.__server_id
-        server_name = self.__server_name
+        server_name = self._server_name
 
         Mu.log_debug(self.__logger, "[{0}]CPU Monitoring begin...".format(check_id))
         Mu.log_debug(self.__logger, "Trying to get CPU overview of {0}".format(server_name))
@@ -136,17 +136,16 @@ class CPUMonitor(Monitor):
 class DiskMonitor(Monitor):
     """Monitoring for Disk, get disk consuming information by user from all the servers"""
 
-    def __init__(self, server_id, server_name, mount_point, interval):
+    def __init__(self, server_id, mount_point, interval):
         super().__init__()
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_DISK)
         self.__server_id = server_id
-        self.__server_name = server_name
         self.__mount_point = mount_point
         self.__interval = interval
 
     def monitoring(self, check_id):
         server_id = self.__server_id
-        server_name = self.__server_name
+        server_name = self._server_name
         mount_point = self.__mount_point
 
         Mu.log_debug(self.__logger, "[{0}]Disk Monitoring begin...".format(check_id))
@@ -177,16 +176,15 @@ class InstanceInfoMonitor(Monitor):
     Including SID, instance number, host, server name, revision, edition and so on.
     Not to affect the overall status calculation, this stage is not counted when calculating status of overall stage
     """
-    def __init__(self, server_id, server_name, interval):
+    def __init__(self, server_id, interval):
         super().__init__()
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_INSTANCE)
         self.__server_id = server_id
-        self.__server_name = server_name
         self.__interval = interval
 
     def monitoring(self, check_id):
         server_id = self.__server_id
-        server_name = self.__server_name
+        server_name = self._server_name
         Mu.log_debug(self.__logger, "[{0}]Instance Monitoring begin...".format(check_id))
         Mu.log_debug(self.__logger, "Trying to get instance info of {0}".format(server_name))
         # collect instance info for one server by server id
@@ -231,16 +229,16 @@ class MonitorResourceDispatcher(ResourceInfoDispatcher):
             self.__dispatch_instance_info(monitor)
 
     def __dispatch_memory_info(self, monitor):
-        monitor.get_msg_producer().delivery(self.__monitor_info, "MEMORY", self.__server_id)
+        monitor.get_msg_producer().delivery(self.__monitor_info, InfoType.MEMORY.value, self.__server_id)
 
     def __dispatch_cpu_info(self, monitor):
-        monitor.get_msg_producer().delivery(self.__monitor_info, "CPU", self.__server_id)
+        monitor.get_msg_producer().delivery(self.__monitor_info, InfoType.CPU.value, self.__server_id)
 
     def __dispatch_disk_info(self, monitor):
-        monitor.get_msg_producer().delivery(self.__monitor_info, "DISK", self.__server_id)
+        monitor.get_msg_producer().delivery(self.__monitor_info, InfoType.DISK.value, self.__server_id)
 
     def __dispatch_instance_info(self, monitor):
-        monitor.get_msg_producer().delivery(self.__monitor_info, "INSTANCE", self.__server_id)
+        monitor.get_msg_producer().delivery(self.__monitor_info, InfoType.INSTANCE.value, self.__server_id)
 
 
 class HANAServerOSOperatorService:
@@ -605,7 +603,7 @@ class MsgProducerService:
             # body
             for info in info_list:
                 # for all messages, add type and server id
-                info["type"] = info_type
+                info[Mc.MSG_TYPE] = info_type
                 info[Mc.FIELD_SERVER_ID] = server_id
                 Mu.log_debug(self.__logger, "Sending {0} info {1} to queue...".format(info_type, info))
                 self.__producer.send(self.__topic, info)
@@ -618,42 +616,38 @@ class MsgProducerService:
 
     @staticmethod
     def __get_message_header(msg_type, server_id):
-        return {"type": msg_type, Mc.FIELD_SERVER_ID: server_id, "header": True}
+        return {"type": msg_type, Mc.FIELD_SERVER_ID: server_id, Mc.MSG_HEADER: True}
 
     @staticmethod
     def __get_message_ending(msg_type, server_id):
-        return {"type": msg_type, Mc.FIELD_SERVER_ID: server_id, "ending": True}
+        return {"type": msg_type, Mc.FIELD_SERVER_ID: server_id, Mc.MSG_ENDING: True}
 
 
 class Agent:
     """
     Usage: Agent.py
 
-    --server_name=<server_name>                 server full name
-    --mount_point=<mount_point>                 mount point of your storage
-    --q_server_name=<queue_server_name>         kafka server name
-    --q_server_port=<queue_server_port>         kafka server port
-    --m_frequency=<check_frequency_for_memory>  check frequency for memory in seconds
-    --d_frequency=<check_frequency_for_disk>    check frequency for disk in seconds
-    --c_frequency=<check_frequency_for_cpu>     check frequency for CPU in seconds
-    --o_frequency=<check_frequency_for_others>  check frequency for others in seconds
+    --server_id=<server_id>                       server id
+    --mount_point=<mount_point>                   mount point of your storage
+    --m_frequency=<check_frequency_for_memory>    check frequency for memory in seconds
+    --d_frequency=<check_frequency_for_disk>      check frequency for disk in seconds
+    --c_frequency=<check_frequency_for_cpu>       check frequency for CPU in seconds
+    --i_frequency=<check_frequency_for_instance>  check frequency for instance in seconds
 
     -h | --help
     """
     short_opts = "h"
-    long_opts = ["help", "server_name=", "mount_point=", "q_server_name=", "q_server_port=",
+    long_opts = ["help", "server_id=", "mount_point=", "q_server_name=", "q_server_port=",
                  "m_frequency=", "d_frequency=", "c_frequency=", "o_frequency="]
 
     def __init__(self):
         self.PID_FILE = "/tmp/monitor_agent.pid"
-        self.server_name = 'localhost'
+        self.server_id = '-1'
         self.mount_point = '/usr/sap'
-        self.q_server_name = 'localhost'
-        self.q_server_port = '9092'
         self.m_frequency = 15
         self.d_frequency = 3600
         self.c_frequency = 1800
-        self.o_frequency = 600
+        self.i_frequency = 600
 
         # register the signals to be caught
         signal.signal(signal.SIGINT, self.terminate_process)  # kill -2
@@ -667,6 +661,15 @@ class Agent:
     def start(self):
         self.handle_parameters()
         self.handle_pid_file()
+        memory_monitor = MemoryMonitor(self.server_id, self.m_frequency)
+        cpu_monitor = CPUMonitor(self.server_id, self.c_frequency)
+        disk_monitor = DiskMonitor(self.server_id, self.mount_point, self.d_frequency)
+        instance_monitor = InstanceInfoMonitor(self.server_id, self.i_frequency)
+
+        memory_monitor.start()
+        cpu_monitor.start()
+        disk_monitor.start()
+        instance_monitor.start()
 
     def exit(self):
         os.unlink(self.PID_FILE)
@@ -697,18 +700,12 @@ class Agent:
             for o, a in opts:
                 if o in ("-h", "--help"):
                     self.help()
-                elif o in "--server_name":
-                    self.server_name = a
-                    print("server_name:", self.server_name)
+                elif o in "--server_id":
+                    self.server_id = a
+                    print("server_id:", self.server_id)
                 elif o in "--mount_point":
                     self.mount_point = a
                     print("mount_point:", self.mount_point)
-                elif o in "--q_server_name":
-                    self.q_server_name = a
-                    print("q_server_name:", self.q_server_name)
-                elif o in "--q_server_port":
-                    self.q_server_port = a
-                    print("q_server_port:", self.q_server_port)
                 elif o in "--m_frequency":
                     self.m_frequency = int(a)
                     print("m_frequency:", self.m_frequency)
@@ -718,9 +715,9 @@ class Agent:
                 elif o in "--c_frequency":
                     self.c_frequency = int(a)
                     print("c_frequency:", self.c_frequency)
-                elif o in "--o_frequency":
-                    self.o_frequency = int(a)
-                    print("o_frequency:", self.o_frequency)
+                elif o in "--i_frequency":
+                    self.i_frequency = int(a)
+                    print("i_frequency:", self.i_frequency)
                 else:
                     print("[ERROR]", "Unknown option '%s'" % o)
                     self.help()
@@ -776,31 +773,28 @@ class Agent:
 
 
 if __name__ == '__main__':
-    memory_monitor = MemoryMonitor(2, 'llbpal92', 15)
-    cpu_monitor = CPUMonitor(5, 'llbpal95', 15)
-    disk_monitor = DiskMonitor(8, 'llbpal98', '/usr/sap', 3600)
-    instance_monitor = InstanceInfoMonitor(3, "llbpal93", 3600)
+    # memory_monitor = MemoryMonitor(2, 15)
+    # cpu_monitor = CPUMonitor(5, 15)
+    # disk_monitor = DiskMonitor(8, '/usr/sap', 3600)
+    # instance_monitor = InstanceInfoMonitor(3, 3600)
+    #
+    # memory_monitor.start()
+    # cpu_monitor.start()
+    # disk_monitor.start()
+    # instance_monitor.start()
+    #
+    # memory_monitor = MemoryMonitor(1, 15)
+    # cpu_monitor = CPUMonitor(4, 15)
+    # disk_monitor = DiskMonitor(7, '/usr/sap', 3600)
+    # instance_monitor = InstanceInfoMonitor(6, 3600)
+    #
+    # memory_monitor.start()
+    # cpu_monitor.start()
+    # disk_monitor.start()
+    # instance_monitor.start()
 
-    memory_monitor.start()
-    cpu_monitor.start()
-    disk_monitor.start()
-    instance_monitor.start()
-
-    memory_monitor = MemoryMonitor(1, 'llbpal91', 15)
-    cpu_monitor = CPUMonitor(4, 'llbpal94', 15)
-    disk_monitor = DiskMonitor(7, 'llbpal97', '/usr/sap', 3600)
-    instance_monitor = InstanceInfoMonitor(6, "llbpal96", 3600)
-
-    memory_monitor.start()
-    cpu_monitor.start()
-    disk_monitor.start()
-    instance_monitor.start()
-
-    # agent = Agent()
-    # try:
-    #     agent.start()
-    #     while True:
-    #         print("OKOK")
-    #         time.sleep(30)
-    # finally:
-    #     agent.exit()
+    agent = Agent()
+    try:
+        agent.start()
+    finally:
+        agent.exit()

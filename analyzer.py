@@ -52,7 +52,7 @@ class DataAnalyzer(Thread):
                         # init the info for the specific type
                         if info_type.value not in info:
                             info[info_type.value] = {}
-                        info[info_type.value][server_id] = {"type": info_type.value, "info": {}}
+                        info[info_type.value][server_id] = {Mc.MSG_TYPE: info_type.value, Mc.MSG_INFO: {}}
                     elif start_flag.get(info_type, {}).get(server_id, False) and DataAnalyzer.__is_ending(message):
                         # done, analyze the message and put filtered message to queue
                         self.__producer.send(self.__topic, info[info_type.value][server_id])
@@ -69,11 +69,11 @@ class DataAnalyzer(Thread):
 
     @staticmethod
     def __is_header(info):
-        return info.get("header", False) if info else False
+        return info.get(Mc.MSG_HEADER, False) if info else False
 
     @staticmethod
     def __is_ending(info):
-        return info.get("ending", False) if info else False
+        return info.get(Mc.MSG_ENDING, False) if info else False
 
     @staticmethod
     def __process(info_analyzer, message, info):
@@ -83,12 +83,12 @@ class DataAnalyzer(Thread):
     def __get_info_analyzer(self, info):
         """get the info analyzer for different resource base on the resource type"""
         switcher = {
-            "MEMORY": self.__mem_info_analyzer,
-            "CPU": self.__cpu_info_analyzer,
-            "DISK": self.__disk_info_analyzer,
-            "INSTANCE": self.__instance_info_analyzer
+            InfoType.MEMORY.value: self.__mem_info_analyzer,
+            InfoType.CPU.value: self.__cpu_info_analyzer,
+            InfoType.DISK.value: self.__disk_info_analyzer,
+            InfoType.INSTANCE.value: self.__instance_info_analyzer
         }
-        return switcher.get(info.get("type", "N/A"), None) if info else None
+        return switcher.get(info.get(Mc.MSG_TYPE, "N/A"), None) if info else None
 
     def run(self):
         """run the thread"""
@@ -134,7 +134,7 @@ class DataAnalyzer(Thread):
                 user = message.get(Mc.FIELD_USER_NAME, None)
                 # calc total usage
                 if user:
-                    info["info"][user] = info["info"].get(user, 0.0) + float(message.get(Mc.FIELD_MEM, 0))
+                    info[Mc.MSG_INFO][user] = info[Mc.MSG_INFO].get(user, 0.0) + float(message.get(Mc.FIELD_MEM, 0))
 
         def type(self):
             return InfoType.MEMORY
@@ -164,7 +164,7 @@ class DataAnalyzer(Thread):
                 folder = message.get(Mc.FIELD_FOLDER, "N/A")
                 # calc total usage
                 if folder:
-                    info["info"][folder] = {user: message.get(Mc.FIELD_DISK_USAGE_KB, 0)}
+                    info[Mc.MSG_INFO][folder] = {user: message.get(Mc.FIELD_DISK_USAGE_KB, 0)}
 
         def type(self):
             return InfoType.DISK
@@ -191,7 +191,7 @@ class DataAnalyzer(Thread):
                 user = message.get(Mc.FIELD_USER_NAME, None)
                 # calc total usage
                 if user:
-                    info["info"][user] = info["info"].get(user, 0.0) + float(message.get(Mc.FIELD_CPU, 0))
+                    info[Mc.MSG_INFO][user] = info[Mc.MSG_INFO].get(user, 0.0) + float(message.get(Mc.FIELD_CPU, 0))
 
         def type(self):
             return InfoType.CPU
@@ -215,12 +215,12 @@ class DataAnalyzer(Thread):
             # get sid
             sid = message.get(Mc.FIELD_SID)
             if sid:
-                message.pop("type", None)
-                info["info"][sid] = message
+                message.pop(Mc.MSG_TYPE, None)  # remove type
+                info[Mc.MSG_INFO][sid] = message
 
         def type(self):
             return InfoType.INSTANCE
 
 
 if __name__ == '__main__':
-    analyzer = DataAnalyzer().start()
+    DataAnalyzer().start()
