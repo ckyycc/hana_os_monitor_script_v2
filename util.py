@@ -28,6 +28,7 @@ class MonitorConst:
     LOGGER_MONITOR_COORDINATOR = "monitor.coordinator"
     LOGGER_MONITOR_ANALYZER = "monitor.analyzer"
     LOGGER_MONITOR_OPERATOR = "monitor.operator"
+    LOGGER_AGENT = "monitor.agent"
     LOGGER_AGENT_MSG_PRODUCER = "monitor.agent.producer"
     LOGGER_MONITOR_MEM = "monitor.agent.mem"
     LOGGER_MONITOR_DISK = "monitor.agent.disk"
@@ -177,6 +178,10 @@ class MonitorConst:
     @staticmethod
     def get_kafka_port():
         return MonitorConst.__config.get("monitor.mb", "kafka_port")
+
+    @staticmethod
+    def get_agent_path():
+        return MonitorConst.__config.get("monitor.agent", "agent_path")
 
     @staticmethod
     def __get_db_configuration_not_real_time(name, component, db_operator, logger=None):
@@ -615,48 +620,44 @@ class MonitorUtility:
         #     return rsa.decrypt(byte_to_decrypt, private_data).decode("utf-8")
 
     @staticmethod
-    def log_debug(logger, message, location_id=None):
-        if location_id is not None:
-            message = "[{0}]{1}".format(location_id, message)
+    def __get_log_message(message):
+        return "[{0}] {1}".format(os.getpid(), message)
+
+    @staticmethod
+    def log_debug(logger, message):
         if logger is not None:
             try:
-                logger.debug(message)
+                logger.debug(MonitorUtility.__get_log_message(message))
             except Exception as ex:
                 print("Logging [debug] message '{0}' failed, error:{1}".format(message, ex))
         else:
             print(message)
 
     @staticmethod
-    def log_info(logger, message, location_id=None):
-        if location_id is not None:
-            message = "[{0}]{1}".format(location_id, message)
+    def log_info(logger, message):
         if logger is not None:
             try:
-                logger.info(message)
+                logger.info(MonitorUtility.__get_log_message(message))
             except Exception as ex:
                 print("Logging [info] message '{0}' failed, error:{1}".format(message, ex))
         else:
             print(message)
 
     @staticmethod
-    def log_warning(logger, message, location_id=None):
-        if location_id is not None:
-            message = "[{0}]{1}".format(location_id, message)
+    def log_warning(logger, message):
         if logger is not None:
             try:
-                logger.warning(message)
+                logger.warning(MonitorUtility.__get_log_message(message))
             except Exception as ex:
                 print("Logging [warning] message '{0}' failed, error:{1}".format(message, ex))
         else:
             print(message)
 
     @staticmethod
-    def log_error(logger, message, location_id=None):
-        if location_id is not None:
-            message = "[{0}]{1}".format(location_id, message)
+    def log_error(logger, message):
         if logger is not None:
             try:
-                logger.error(message)
+                logger.error(MonitorUtility.__get_log_message(message))
             except Exception as ex:
                 print("Logging [error] message '{0}' failed, error:{1}".format(message, ex))
         else:
@@ -666,7 +667,7 @@ class MonitorUtility:
     def log_exception(logger, message):
         if logger is not None:
             try:
-                logger.exception(message)
+                logger.exception(MonitorUtility.__get_log_message(message))
             except Exception as ex:
                 print("Logging [exception] message '{0}' failed, error:{1}".format(message, ex))
         else:

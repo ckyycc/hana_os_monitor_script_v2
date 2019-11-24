@@ -74,5 +74,8 @@ class ConfigMonitor(threading.Thread):
         while True:
             self.__monitoring_configurations(operator)
 
-            # default 600 seconds TODO: add new config
-            time.sleep(self.__configs.get("CONFIG_CHECK_INTERVAL_INT", 15))
+            time.sleep(self.__configs.get("CHECK_INTERVAL_CONFIG_INT", 300))
+
+
+if __name__ == '__main__':
+    ConfigMonitor().start()

@@ -16,7 +16,7 @@ from datetime import datetime
 from threading import Thread
 import time
 import re
-
+import atexit
 
 class Monitor(ABC, Thread):
     """The root (abstract) Class for the Monitor Tools
@@ -638,7 +638,7 @@ class Agent:
     """
     short_opts = "h"
     long_opts = ["help", "server_id=", "mount_point=", "q_server_name=", "q_server_port=",
-                 "m_frequency=", "d_frequency=", "c_frequency=", "o_frequency="]
+                 "m_frequency=", "d_frequency=", "c_frequency=", "i_frequency="]
 
     def __init__(self):
         self.PID_FILE = "/tmp/monitor_agent.pid"
@@ -648,6 +648,7 @@ class Agent:
         self.d_frequency = 3600
         self.c_frequency = 1800
         self.i_frequency = 600
+        self.__logger = Mu.get_logger(Mc.LOGGER_AGENT)
 
         # register the signals to be caught
         signal.signal(signal.SIGINT, self.terminate_process)  # kill -2
@@ -657,6 +658,8 @@ class Agent:
         signal.signal(signal.SIGFPE, self.terminate_process)  # kill -8
         signal.signal(signal.SIGUSR1, self.terminate_process)  # kill -11
         signal.signal(signal.SIGTERM, self.terminate_process)  # kill -15
+
+        atexit.register(Agent.exit_clean_up, logger=self.__logger, file=self.PID_FILE)
 
     def start(self):
         self.handle_parameters()
@@ -671,12 +674,13 @@ class Agent:
         disk_monitor.start()
         instance_monitor.start()
 
-    def exit(self):
-        os.unlink(self.PID_FILE)
+    @staticmethod
+    def exit_clean_up(logger, file):
+        Mu.log_info(logger, "Removing the pid file {0}.".format(file))
+        os.unlink(file)
 
     def terminate_process(self, signal_number, frame=None):
-        print('Received:', signal_number)
-        self.exit()
+        Mu.log_warning(self.__logger, "Received {0}, exiting...".format(signal_number))
         sys.exit(signal_number)
 
     def help(self):
@@ -741,33 +745,35 @@ class Agent:
 
         # pid file exists
         if os.path.isfile(pid_file):
-            print("%s already exists, exiting" % pid_file)
-            print("check... pid")
-
+            Mu.log_info(self.__logger, "{0} already exists, trying to kill the previous agent".format(pid_file))
             with open(pid_file) as f:
                 old_pid = f.read()
+                Mu.log_info(self.__logger, "checking the pid {0} of the previous agent".format(old_pid))
                 # get the process list owned by current user, started via python and have the same pid as the pid file
                 processes = subprocess.getoutput("ps -fu {0} | grep '[Pp]ython' | grep {1}".format(user_name, old_pid))
                 # retry times
                 count = 0
                 while processes and count < 10 and len(processes.strip()) > 0:
+                    Mu.log_info(self.__logger, "trying to kill the pid {0}.".format(old_pid))
                     try:
                         os.kill(int(old_pid), signal.SIGKILL)
                     except ProcessLookupError as ex:
-                        print("KiLL error {0}".format(ex))  # log....
+                        Mu.log_warning(self.__logger, "Failed to kill the old agent, error: {0}".format(ex))
 
                     processes = subprocess.getoutput(
                         "ps -fu {0} | grep '[Pp]ython' | grep {1}".format(user_name, old_pid))
                     count += 1
 
                 if count >= 10:
-                    print("Some thing wrong happens, can't kill the previous process {0}".format(old_pid))  # log...
+                    Mu.log_error(self.__logger,
+                                 "Some thing wrong happened, can't kill the previous process {0}".format(old_pid))
                     raise MonitorOSOpError(
                         "Some thing wrong happens, can't kill the previous process {0}".format(old_pid))
             # remove the old pid file
             os.unlink(pid_file)
 
         # write current pid to pid file
+        Mu.log_info(self.__logger, "trying to write the pid file {0} with pid {1}.".format(pid_file, pid))
         with open(pid_file, "w") as f:
             f.write(pid)
 
@@ -793,8 +799,4 @@ if __name__ == '__main__':
     # disk_monitor.start()
     # instance_monitor.start()
 
-    agent = Agent()
-    try:
-        agent.start()
-    finally:
-        agent.exit()
+    Agent().start()

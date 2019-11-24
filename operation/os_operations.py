@@ -37,10 +37,12 @@ class LinuxOperator:
                     server_name = " on server:{0}".format(ssh.remote_server_name_)
                 Mu.log_error(self.__logger, "Failed to close SSH connection with error:{0}{1}.".format(ex, server_name))
 
-    def __ssh_exec_command(self, command, ssh, stdin_param=None):
+    def __ssh_exec_command(self, command, ssh, stdin_param=None, backend=False):
         try:
             # only enable get_pty without input parameters (the output contains '\r\h' when get_pty=true)
             pty_flag = False if stdin_param is None else True
+            if backend:
+                command = 'nohup bash -lc "{0}" >/dev/null 2>&1 &'.format(command)
 
             # execute command via SSH with 10 minutes timeout
             cmd_input, cmd_output, cmd_err = ssh.exec_command(command, timeout=600, get_pty=pty_flag)
@@ -56,12 +58,16 @@ class LinuxOperator:
 
             Mu.log_warning(self.__logger, "Command:{0} execution failed{1}, {2}".format(command, server_name, ex))
 
-    def restart_agent(self, ssh, server_id, mount_point, mem_interval, cpu_interval, disk_interval, instance_interval):
-        # TODO agent path
+    def restart_agent(self, ssh, server_id, mount_point, agent_path,
+                      mem_interval, cpu_interval, disk_interval, instance_interval):
+        Mu.log_info(self.__logger, "Starting agent at {0} on server {1} with {2} {3} {4} {5} {6}...".format(
+            agent_path, server_id, mount_point, mem_interval, cpu_interval, disk_interval, instance_interval))
         self.__ssh_exec_command(
-            "python /usr/sap/CK/home/tmp/py_project_25/agent.py --server_id={0} --mount_point={1} "
-            "--m_frequency={2} --d_frequency={3} --c_frequency={4} --d_frequency={5}".format(
-                server_id, mount_point, mem_interval, cpu_interval, disk_interval, instance_interval), ssh)
+            "python {0} --server_id={1} --mount_point={2} "
+            "--m_frequency={3} --d_frequency={4} --c_frequency={5} --i_frequency={6}".format(
+                agent_path, server_id, mount_point, mem_interval, cpu_interval, disk_interval, instance_interval),
+            ssh, backend=True)
+        Mu.log_info(self.__logger, "Finished starting agent at {0} on server {1}.".format(agent_path, server_id))
 
     def collect_disk_info(self, ssh, mount_point):
         return self.__ssh_exec_command(

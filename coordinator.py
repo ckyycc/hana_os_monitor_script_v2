@@ -41,19 +41,14 @@ class MonitorCoordinator(threading.Thread):
                     self.__restart_agent(server[Mc.FIELD_SERVER_FULL_NAME],
                                          server[Mc.FIELD_SERVER_ID],
                                          server[Mc.FIELD_MOUNT_POINT],
-                                         self.__configs.get("CHECK_INTERVAL_MEM_INT", 3600),
-                                         self.__configs.get("CHECK_INTERVAL_CPU_INT", 3600),
+                                         Mc.get_agent_path(),
+                                         self.__configs.get("CHECK_INTERVAL_MEM_INT", 60),
+                                         self.__configs.get("CHECK_INTERVAL_CPU_INT", 300),
                                          self.__configs.get("CHECK_INTERVAL_DISK_INT", 3600),
-                                         self.__configs.get("CHECK_INTERVAL_INSTANCE_INT", 3600))
+                                         self.__configs.get("CHECK_INTERVAL_INSTANCE_INT", 300))
 
-    def __restart_agent(self,
-                        server,
-                        server_id,
-                        mount_point,
-                        mem_interval,
-                        cpu_interval,
-                        disk_interval,
-                        instance_interval):
+    def __restart_agent(self, server, server_id, mount_point, agent_path,
+                        mem_interval, cpu_interval, disk_interval, instance_interval):
         ssh = self.__open_ssh_connection(server,
                                          Mc.get_ssh_default_user(),
                                          Mu.get_decrypt_string(Mc.get_rsa_key_file(), Mc.get_ssh_default_password()))
@@ -63,6 +58,7 @@ class MonitorCoordinator(threading.Thread):
             self.__os_operator.restart_agent(ssh,
                                              server_id,
                                              mount_point,
+                                             agent_path,
                                              mem_interval, cpu_interval, disk_interval, instance_interval)
 
     def __update_configs(self, config):
@@ -101,3 +97,7 @@ class MonitorCoordinator(threading.Thread):
                                      value_deserializer=lambda m: json.loads(m.decode('ascii')))
             self.__coordinating_monitors(consumer)
             Mu.log_warning(self.__logger, "Topic is empty or connection is lost. Trying to reconnect...")
+
+
+if __name__ == '__main__':
+    MonitorCoordinator().start()
