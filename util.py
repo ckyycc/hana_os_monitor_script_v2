@@ -18,6 +18,13 @@ class InfoType(Enum):
     INSTANCE = 4
 
 
+class ActionType(Enum):
+    """Action type for application operator"""
+    SHUTDOWN = 1
+    START = 2
+    RESTART = 3
+
+
 class MonitorConst:
 
     # ------Get configuration------
@@ -28,6 +35,9 @@ class MonitorConst:
     LOGGER_MONITOR_COORDINATOR = "monitor.coordinator"
     LOGGER_MONITOR_ANALYZER = "monitor.analyzer"
     LOGGER_MONITOR_OPERATOR = "monitor.operator"
+    LOGGER_MONITOR_OPERATOR_DB = "monitor.operator.db"
+    LOGGER_MONITOR_OPERATOR_ALARM = "monitor.operator.alarm"
+
     LOGGER_AGENT = "monitor.agent"
     LOGGER_AGENT_MSG_PRODUCER = "monitor.agent.producer"
     LOGGER_MONITOR_MEM = "monitor.agent.mem"
@@ -40,6 +50,7 @@ class MonitorConst:
     LOGGER_MONITOR_SERVER_DB_OPERATOR = "monitor.db_operator"
     LOGGER_MONITOR_TEST = "monitor.test"
     LOGGER_MONITOR_UTILITY = "monitor.utility"
+    LOGGER_MONITOR_EMAIL = "monitor.email"
     LOGGER_MONITOR_INIT_SERVER = "monitor.init.server"
     LOGGER_MONITOR_INIT_SID = "monitor.init.sid"
     LOGGER_MONITOR_INIT_TABLE = "monitor.init.table"
@@ -89,6 +100,7 @@ class MonitorConst:
     FIELD_SID = "SID"
     FIELD_SID_START = "SID_START"
     FIELD_SID_END = "SID_END"
+    FIELD_FILTER_FLAG = "FILTER_FLAG"
     FIELD_EMPLOYEE_ID = "EMPLOYEE_ID"
     FIELD_LOCATION_ID = "LOCATION_ID"
     FIELD_LOCATION = "LOCATION"
@@ -97,16 +109,22 @@ class MonitorConst:
     FIELD_HOST = "HOST"
     FIELD_EDITION = "EDITION"
 
-    # -- Kafka Topic
+    # -- Kafka
     TOPIC_CONFIGURATION = "configuration"
     TOPIC_SERVER_MONITORING_INFO = "monitoring_info"
     TOPIC_SERVER_MONITORING_FILTERED_INFO = "monitoring_filtered_data"
+    TOPIC_APP_OPERATION = "app_operation"
     MONITOR_GROUP_ID = "monitor_group"
-
+    MONITOR_GROUP_ID_ALARM = "monitor_group_alarm"
     MSG_TYPE = "type"
     MSG_INFO = "info"
     MSG_HEADER = "header"
     MSG_ENDING = "ending"
+    INFO_TOTAL = "total"
+    INFO_FREE = "free"
+    INFO_USAGE = "usage"
+    INFO_ALARM_NUM = "alarm_num"
+    INFO_ALARM_TIME = "alarm_time"
     # -- db configuration
     _DB_CONFIGURATION_COMPONENT_GLOBAL = "GLOBAL"
     _DB_CONFIGURATION_COMPONENT_MONITOR = "MONITOR"
@@ -466,119 +484,22 @@ class MonitorUtility:
         return "".join([sid.lower(), "adm"])
 
     @staticmethod
-    def is_current_time_working_time():
+    def is_current_time_working_time(operation_hours):
         current_time = datetime.now()
         hour = int(current_time.strftime('%H'))
-        operation_hour_start, operation_hour_end = MonitorConst.get_operation_hours(MonitorUtility.__logger)
-        weekday = current_time.weekday()
-        return operation_hour_start <= hour <= operation_hour_end and weekday < 5
 
-    @staticmethod
-    def send_email(email_from,
-                   email_to,
-                   email_subject,
-                   email_content,
-                   email_cc=None,
-                   email_password=None,
-                   smtp_server="mail.sap.corp",
-                   smtp_port=25):
-        """Tool for sending email.
-        email_from: string
-        email_to: list, doesn't support string
-        email_subject: string
-        email_content: string
-        email_cc: list, default value is None
-        email_password: string, default value is None (for those SMTP servers which do not need password)"""
-
-        if email_to is None:
-            email_to = []
-        if email_cc is None:
-            email_cc = []
-        if not isinstance(email_to, list) or not isinstance(email_cc, list):
-            MonitorUtility.__logger.error("String is not accepted for the recipients! Please use list instead!")
-            return
-        # remove duplicates from email_to and email_cc
-        email_to = list(set(email_to))
-        email_cc = list(set(email_cc))
-        server = None
         try:
-            server = smtplib.SMTP(smtp_server, smtp_port)
-            # server.connect('mail.sap.corp', 25)
-            # server.ehlo()
-            # server.starttls()
-            # server.ehlo()
-            if email_password is not None:
-                server.login(email_from, email_password)
-
-            email_body = "\r\n".join(["From: {0}".format(email_from),
-                                      "To: {0}".format(",".join(email_to)),
-                                      "CC: {0}".format(",".join(email_cc)),
-                                      "Subject: {0}".format(email_subject),
-                                      "",
-                                      email_content])
-
-            server.sendmail(email_from, email_to + email_cc, email_body)
-            MonitorUtility.__logger.info("Email:{0} is sent to "
-                                         "{1} successfully!".format(email_subject, email_to + email_cc))
+            operation_hour_start, operation_hour_end = operation_hours.split(',')
+            start_hour = int(operation_hour_start)
+            end_hour = int(operation_hour_end)
         except Exception as ex:
-            MonitorUtility.__logger.error("Failed to send email to "
-                                          "{0}! Error:{1}, Subject:".format(email_to, ex, email_subject))
-        finally:
-            if server is not None:
-                server.quit()
+            MonitorUtility.__logger.warning(
+                "Parsing operation hours failed in 'is_current_time_working_time' with error: {0}".format(ex))
+            start_hour = 7
+            end_hour = 19
 
-    @staticmethod
-    def generate_email_body(server_info, email_type, additional_info=None):
-        if email_type == MonitorConst.SERVER_INFO_MEM:
-            total = round(server_info[MonitorConst.FIELD_MEM_TOTAL] / 1024 / 1024, 2)
-            free = round(server_info[MonitorConst.FIELD_MEM_FREE] / 1024 / 1024, 2)
-            check_type = "Memory"
-        elif email_type == MonitorConst.SERVER_INFO_DISK:
-            total = round(server_info[MonitorConst.FIELD_DISK_TOTAL] / 1024 / 1024, 2)
-            free = round(server_info[MonitorConst.FIELD_DISK_FREE] / 1024 / 1024, 2)
-            check_type = "Disk"
-        else:  # MonitorConst.SERVER_INFO_CPU
-            free = 0
-            total = server_info[MonitorConst.FIELD_CPU_UTILIZATION]
-            check_type = "CPU"
-
-        server_name = server_info[MonitorConst.FIELD_SERVER_FULL_NAME]
-        # memory_total = round(server_info["MEM_TOTAL"] / 1024 / 1024, 2)
-        # memory_free = round(server_info["MEM_FREE"] / 1024 / 1024, 2)
-        check_time = server_info[MonitorConst.FIELD_CHECK_TIME]
-
-        body = ("Server Name:{0} \n"
-                "\t CPU Utilization: {1}% \n"
-                "\t Check Time:{2}".format(server_name, total, check_time)) \
-            if email_type == MonitorConst.SERVER_INFO_CPU else (
-                "Server Name:{0}\n"
-                "\t Total {1}:{2}GB\n"
-                "\t Free {3}:{4}GB\n"
-                "\t Check Time:{5}".format(server_name, check_type, total, check_type, free, check_time))
-
-        if additional_info:
-            # top 5 consumers
-            check_id = additional_info[0][MonitorConst.FIELD_CHECK_ID]
-            body_additional = "\n Following is the top 5 {0} consumers, check id:{1}:\n ".format(check_type, check_id)
-            unit_type = "GB" if email_type == MonitorConst.SERVER_INFO_DISK else "%"
-            for consumer in additional_info:
-                if email_type == MonitorConst.SERVER_INFO_DISK:
-                    sid = consumer[MonitorConst.FIELD_FOLDER]
-                    sid_or_folder = "Folder"
-                else:
-                    sid = MonitorUtility.get_sid_from_sidadm(consumer[MonitorConst.FIELD_USER_NAME])
-                    sid_or_folder = "SID"
-                body_additional = "".join([body_additional, ("\t {0}: {1}, Name: {2}, {3} Usage: {4}{5}"
-                                                             "\n".format(sid_or_folder,
-                                                                         sid,
-                                                                         consumer[MonitorConst.FIELD_EMPLOYEE_NAME],
-                                                                         check_type,
-                                                                         consumer[MonitorConst.FIELD_USAGE],
-                                                                         unit_type))])
-            body = "".join([body, body_additional])
-            # Will add more inform like: "This is the {0} warning email, the HANA instance which
-            # consuming the most Memory will be shutdown after THREE warning email!!"
-        return body
+        weekday = current_time.weekday()
+        return start_hour <= hour <= end_hour and weekday < 5
 
     @staticmethod
     def generate_public_private_key(path):
@@ -672,3 +593,173 @@ class MonitorUtility:
                 print("Logging [exception] message '{0}' failed, error:{1}".format(message, ex))
         else:
             print(message)
+
+
+class Email:
+    """class for sending email"""
+    __logger = logging.getLogger(MonitorConst.LOGGER_MONITOR_EMAIL)
+
+    @staticmethod
+    def send_emergency_shutdown_email(sender, receiver, sid, server_name, employee_name, admin, usage, info_type):
+        if receiver is not None and len(receiver) > 0:
+            # sending email to the owner of the instance
+            email_to = [receiver]
+            email_body = ("Dear {0}, \n\n{1} is running out of memory, the emergency shutdown of your {2} is "
+                          "because of its consuming highest memory ({3}%). "
+                          "If this SID is very important and you do not want "
+                          "it to be shut down next time, please contact administrator"
+                          " to mark it as an important SID. \n -- this is only a testing email "
+                          "your hana will not be shut down really, please do it manually."
+                          "\n\nRegards,\nHANA OS "
+                          "Monitor".format(employee_name, server_name, sid, usage))
+            Email.send_email(
+                sender,
+                email_to,
+                "[MONITOR.{0}] {1} on {2} is Shutting Down".format(info_type.name, sid, server_name),
+                email_body,
+                admin)
+        else:
+            Email.__logger.warning("No email is sent out, because of the empty email receiver.")
+
+    @staticmethod
+    def send_shutdown_email(sender, receiver, sid, server_name, employee_name, admin, usage, info_type):
+        if receiver is not None and len(receiver) > 0:
+            # sending email to the owner of the instance
+            email_to = [receiver]
+            email_body = ("Dear {0}, \n\n{1} is running out of memory, the shutdown of your {2} is "
+                          "because of its consuming highest memory ({3}%). "
+                          "If this SID is very important and you do not want "
+                          "it to be shut down next time, please contact administrator"
+                          " to mark it as an important SID. \n -- this is only a testing email "
+                          "your hana will not be shut down really, please do it manually."
+                          "\n\nRegards,\nHANA OS "
+                          "Monitor".format(employee_name, server_name, sid, usage))
+            Email.send_email(
+                sender,
+                email_to,
+                "[MONITOR.{0}] {1} on {2} is Shutting Down".format(info_type.name, sid, server_name),
+                email_body,
+                admin)
+        else:
+            Email.__logger.warning("No email is sent out, because of the empty email receiver.")
+
+    @staticmethod
+    def send_warning_email(sender, receiver, info_type, server_name, consumers, admin):
+        if receiver is not None and len(receiver) > 0:
+            Email.send_email(sender,
+                             receiver,
+                             Email.generate_email_subject(info_type, server_name),
+                             Email.generate_email_body(info_type, consumers),
+                             admin)
+        else:
+            Email.__logger.warning("No email is sent out, because of the empty email receiver.")
+
+    @staticmethod
+    def send_email(email_from,
+                   email_to,
+                   email_subject,
+                   email_content,
+                   email_cc=None,
+                   email_password=None,
+                   smtp_server="mail.sap.corp",
+                   smtp_port=25):
+        """Tool for sending email.
+        email_from: string
+        email_to: list, doesn't support string
+        email_subject: string
+        email_content: string
+        email_cc: list, default value is None
+        email_password: string, default value is None (for those SMTP servers which do not need password)"""
+
+        if email_to is None:
+            email_to = []
+        if email_cc is None:
+            email_cc = []
+        if not isinstance(email_to, list) or not isinstance(email_cc, list):
+            Email.__logger.error("String is not accepted for the recipients! Please use list instead!")
+            return
+        # remove duplicates from email_to and email_cc
+        email_to = list(set(email_to))
+        email_cc = list(set(email_cc))
+        server = None
+        try:
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            # server.connect('mail.sap.corp', 25)
+            # server.ehlo()
+            # server.starttls()
+            # server.ehlo()
+            if email_password is not None:
+                server.login(email_from, email_password)
+
+            email_body = "\r\n".join(["From: {0}".format(email_from),
+                                      "To: {0}".format(",".join(email_to)),
+                                      "CC: {0}".format(",".join(email_cc)),
+                                      "Subject: {0}".format(email_subject),
+                                      "",
+                                      email_content])
+
+            server.sendmail(email_from, email_to + email_cc, email_body)
+            Email.__logger.info("Email:{0} is sent to {1} successfully!".format(email_subject, email_to + email_cc))
+        except Exception as ex:
+            Email.__logger.error("Failed to send email to {0}! Error:{1}, Subject:".format(email_to, ex, email_subject))
+        finally:
+            if server is not None:
+                server.quit()
+
+    @staticmethod
+    def generate_email_subject(info_type, server_name):
+        if info_type == InfoType.MEMORY:
+            info = "Memory"
+        elif info_type == InfoType.CPU:
+            info = "CPU Resource"
+        elif info_type == InfoType.DISK:
+            info = "Disk Space"
+        else:
+            info = ""
+        return "[MONITOR.{0}] {1} is Running Out of {2}".format(info_type.name, server_name, info)
+
+    @staticmethod
+    def generate_email_body(email_type, info):
+        if email_type == InfoType.MEMORY:
+            total = round(info[MonitorConst.INFO_TOTAL] / 1024 / 1024, 2)
+            free = round(info[MonitorConst.INFO_FREE] / 1024 / 1024, 2)
+        elif email_type == InfoType.DISK:
+            total = round(info[MonitorConst.INFO_TOTAL] / 1024 / 1024, 2)
+            free = round(info[MonitorConst.INFO_FREE] / 1024 / 1024, 2)
+        else:  # MonitorConst.SERVER_INFO_CPU
+            total = 100 - info[MonitorConst.INFO_FREE]  # use total as cpu usage: 100 - free cpu
+            free = 0
+
+        server_name = info[MonitorConst.FIELD_SERVER_FULL_NAME]
+
+        check_id = info[MonitorConst.FIELD_CHECK_ID]
+        check_time = datetime.strptime(check_id, '%Y%m%d%H%M%S%f')
+
+        body = ("Server Name:{0} \n"
+                "\t CPU Utilization: {1}% \n"
+                "\t Check Time:{2}".format(server_name, total, check_time)) \
+            if email_type == InfoType.CPU else (
+                "Server Name:{0}\n"
+                "\t Total {1}:{2}GB\n"
+                "\t Free {3}:{4}GB\n"
+                "\t Check Time:{5}".format(server_name, email_type.name, total, email_type.name, free, check_time))
+
+        # top 5 consumers
+        body_additional = "\n Following is the top 5 {0} consumers, check id:{1}:\n ".format(email_type.name, check_id)
+        unit_type = "GB" if email_type == MonitorConst.SERVER_INFO_DISK else "%"
+        for consumer in info[MonitorConst.INFO_USAGE]:
+            if email_type == InfoType.DISK:
+                consuming_info = "Folder:{0}".format(consumer[MonitorConst.FIELD_FOLDER])
+            else:
+                consuming_info = "SID:{0}".format(consumer[MonitorConst.FIELD_SID])
+
+            body_additional = "".join([body_additional, ("\t {0}, Name: {1}, {2} Usage: {3}{4}"
+                                                         "\n".format(consuming_info,
+                                                                     consumer[MonitorConst.FIELD_EMPLOYEE_NAME],
+                                                                     email_type.name,
+                                                                     consumer[MonitorConst.FIELD_USAGE],
+                                                                     unit_type))])
+        body = "".join([body, body_additional])
+        # Will add more inform like: "This is the {0} warning email, the HANA instance which
+        # consuming the most Memory will be shutdown after THREE warning email!!"
+        return body

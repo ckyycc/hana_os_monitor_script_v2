@@ -9,6 +9,7 @@ import traceback
 class HANAMonitorDAO:
     """HANA Operator, response for operating database via the provided SQLs
     """
+
     def __init__(self, server_name, port, user, password):
         # get logging
         self.__logger = Mu.get_logger(Mc.LOGGER_HANA_DB)
@@ -34,6 +35,7 @@ class HANAMonitorDAO:
             self.connection.close()
             self.connection = None
             Mu.log_debug(self.__logger, "Connecting is closed.")
+
     # ----------------------------Below is for select--------------------------------------
 
     def __query_select(self, query):
@@ -91,6 +93,27 @@ class HANAMonitorDAO:
                  "CHECK_ID, RANK FROM HANA_OS_MONITOR.M_TOP5_CPU_CONSUMERS WHERE SERVER_ID={0}".format(server_id))
         return self.__query_select(query)
 
+    def get_info_by_5_sidadm_users(self, server_id, users):
+        """ get all the info for the provides users,
+        if can't find any users in the system, returns 1 record with server full name"""
+        if users is None or len(users) == 0:
+            return []
+
+        # build user string
+        user_list = ""
+        for user in users:  # len of users might be different
+            user_list = "'{0}'".format(user) if len(user_list) == 0 else "{0},'{1}'".format(user_list, user)
+
+        query = ("SELECT C.SERVER_ID, C.SERVER_FULL_NAME, A.SID, A.SID_USER, A.FILTER_FLAG, B.EMPLOYEE_NAME, B.EMAIL "
+                 "FROM HANA_OS_MONITOR.SERVER_INFO C "
+                 "LEFT JOIN ("
+                 "SELECT SERVER_ID, SID, SID_USER, EMPLOYEE_ID, FILTER_FLAG "
+                 "FROM HANA_OS_MONITOR.SID_INFO WHERE SID_USER IN ({0})) A ON A.SERVER_ID = C.SERVER_ID "
+                 "LEFT JOIN HANA_OS_MONITOR.EMPLOYEE_INFO B ON A.EMPLOYEE_ID = B.EMPLOYEE_ID "
+                 "WHERE C.SERVER_ID = {1} ".format(user_list, server_id))
+
+        return self.__query_select(query)
+
     def get_last3_servers_info(self, server_id, threshold=None, op_type=None):
         """Get the last 3 server info by server id and threshold,
         if either threshold or op_type is None, only server id will be applied
@@ -123,7 +146,7 @@ class HANAMonitorDAO:
         working_time = "0{0}".format(working_hour) if working_hour < 10 else "{0}".format(working_hour)
         query = ("SELECT SERVER_FULL_NAME FROM ( SELECT B.SERVER_FULL_NAME, A.SERVER_ID, A.CHECK_ID, COUNT(1) "
                  "AS FAILED_NUM FROM HANA_OS_MONITOR.M_MONITOR_CATALOG A "
-                 "INNER JOIN HANA_OS_MONITOR.SERVER_INFO B ON A.SERVER_ID = B.SERVER_ID " 
+                 "INNER JOIN HANA_OS_MONITOR.SERVER_INFO B ON A.SERVER_ID = B.SERVER_ID "
                  "WHERE A.END_TIME >= TO_TIMESTAMP(TO_NVARCHAR(CURRENT_TIMESTAMP, 'YYYY-MM-DD') "
                  "|| ' {0}:00:00', 'YYYY-MM-DD HH24:MI:SS') "
                  "AND A.STATUS = 'ERROR' AND A.CHECK_ID <= '{1}' AND A.LOCATION_ID = {2} "
@@ -143,11 +166,12 @@ class HANAMonitorDAO:
         query = "SELECT LOCATION_ID, LOCATION FROM HANA_OS_MONITOR.LOCATION_INFO"
         return self.__query_select(query)
 
-    def get_email_admin(self, location_id):
-        query = ("SELECT EMAIL FROM HANA_OS_MONITOR.EMPLOYEE_LOCATION_INFO A " 
+    def get_email_admin(self, server_id):
+        query = ("SELECT EMAIL FROM HANA_OS_MONITOR.EMPLOYEE_LOCATION_INFO A "
                  "INNER JOIN HANA_OS_MONITOR.EMPLOYEE_INFO B ON A.EMPLOYEE_ID = B.EMPLOYEE_ID "
-                 "WHERE A.LOCATION_ID = {0} AND "
-                 "(UPPER(B.ADMIN) = 'X' OR UPPER(B.SUPER_ADMIN) = 'X')".format(location_id))
+                 "INNER JOIN HANA_OS_MONITOR.SERVER_INFO C ON A.LOCATION_ID = C.LOCATION_ID "
+                 "WHERE C.SERVER_ID = {0} AND "
+                 "(UPPER(B.ADMIN) = 'X' OR UPPER(B.SUPER_ADMIN) = 'X')".format(server_id))
         return self.__query_select(query)
 
     def get_configuration(self, component=None, name=None):

@@ -14,7 +14,7 @@ from operation.db_operations import HANAMonitorDAO
 class DBOperator(threading.Thread):
     def __init__(self):
         super().__init__()
-        self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR)
+        self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR_DB)
         self._db_operator = HANAOperatorService.instance()
 
     def __operate(self, consumer):
@@ -63,7 +63,7 @@ class HANAOperatorService:
                                                 Mc.get_hana_port(),
                                                 Mc.get_hana_user(),
                                                 Mc.get_hana_password())
-            self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_SERVER_DB_OPERATOR)
+            self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR_DB)
 
     def __update_server_info(self, check_id, server_id, **kwargs):
         disk_total = kwargs.get("disk_total", None)
