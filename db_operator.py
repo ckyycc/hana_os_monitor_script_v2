@@ -31,7 +31,7 @@ class DBOperator(threading.Thread):
     def run(self):
         """run the thread"""
         while True:
-            consumer = KafkaConsumer(Mc.TOPIC_SERVER_MONITORING_FILTERED_INFO,
+            consumer = KafkaConsumer(Mc.TOPIC_FILTERED_INFO,
                                      group_id=Mc.MONITOR_GROUP_ID,
                                      bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
                                      value_deserializer=lambda m: json.loads(m.decode('ascii')))

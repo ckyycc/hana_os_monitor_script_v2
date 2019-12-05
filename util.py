@@ -8,6 +8,8 @@ import os
 from errors import MonitorUtilError
 from datetime import datetime
 from enum import Enum
+from kafka.structs import TopicPartition
+from contextlib import contextmanager
 
 
 class InfoType(Enum):
@@ -23,6 +25,7 @@ class ActionType(Enum):
     SHUTDOWN = 1
     START = 2
     RESTART = 3
+    CLEAN_LOG_BACKUP = 4
 
 
 class MonitorConst:
@@ -111,15 +114,19 @@ class MonitorConst:
 
     # -- Kafka
     TOPIC_CONFIGURATION = "configuration"
-    TOPIC_SERVER_MONITORING_INFO = "monitoring_info"
-    TOPIC_SERVER_MONITORING_FILTERED_INFO = "monitoring_filtered_data"
+    TOPIC_MONITORING_INFO = "monitoring_info"
+    TOPIC_AGENT_HEARTBEAT = "monitoring_agent_heartbeat"
+    TOPIC_FILTERED_INFO = "monitoring_filtered_data"
     TOPIC_APP_OPERATION = "app_operation"
     MONITOR_GROUP_ID = "monitor_group"
     MONITOR_GROUP_ID_ALARM = "monitor_group_alarm"
+    MONITOR_GROUP_ID_ALARM_HEARTBEAT = "monitor_group_alarm_heartbeat"
     MSG_TYPE = "type"
     MSG_INFO = "info"
     MSG_HEADER = "header"
     MSG_ENDING = "ending"
+    MSG_TIME = "message_time"
+    # MSG_HEARTBEAT = "heartbeat"
     INFO_TOTAL = "total"
     INFO_FREE = "free"
     INFO_USAGE = "usage"
@@ -200,6 +207,23 @@ class MonitorConst:
     @staticmethod
     def get_agent_path():
         return MonitorConst.__config.get("monitor.agent", "agent_path")
+
+    @staticmethod
+    def get_smtp_server():
+        return MonitorConst.__config.get("monitor.alarm", "smtp_server")
+
+    @staticmethod
+    def get_smtp_port():
+        return MonitorConst.__config.get("monitor.alarm", "smtp_port")
+
+    @staticmethod
+    def get_email_sender():
+        return MonitorConst.__config.get("monitor.alarm", "email_sender")
+
+    @staticmethod
+    def get_email_password():
+        return MonitorConst.__config.get("monitor.alarm", "email_password")
+
 
     @staticmethod
     def __get_db_configuration_not_real_time(name, component, db_operator, logger=None):
@@ -291,64 +315,6 @@ class MonitorConst:
                                                                  MonitorConst._DB_CONFIGURATION_COMPONENT_MONITOR,
                                                                  db_operator,
                                                                  logger)
-
-    # @staticmethod
-    # def get_free_memory_threshold(logger=None):
-    #     """free memory threshold, default 20 GB"""
-    #     try:
-    #         threshold = MonitorConst.__config.getint("monitor", "free_memory_threshold")
-    #     except configparser.Error as ex:
-    #         if logger:
-    #             logger.warning("Getting configuration:(monitor, free_memory_threshold) failed:{0}. "
-    #                            "Will use default value.".format(ex))
-    #         threshold = 20
-    #     return threshold
-    #
-    # @staticmethod
-    # def get_free_disk_threshold(logger=None):
-    #     """free disk threshold, default 50 GB"""
-    #     try:
-    #         threshold = MonitorConst.__config.getint("monitor", "free_disk_threshold")
-    #     except configparser.Error as ex:
-    #         if logger:
-    #             logger.warning("Getting configuration:(monitor, free_disk_threshold) failed:{0}. "
-    #                            "Will use default value.".format(ex))
-    #         threshold = 50
-    #     return threshold
-    #
-    # @staticmethod
-    # def get_cpu_utilization_threshold(logger=None):
-    #     """CPU utilization threshold, default 99(%) """
-    #     try:
-    #         threshold = MonitorConst.__config.getint("monitor", "cpu_utilization_threshold")
-    #     except configparser.Error as ex:
-    #         if logger:
-    #             logger.warning("Getting configuration:(monitor, cpu_utilization_threshold) failed:{0}. "
-    #                            "Will use default value.".format(ex))
-    #         threshold = 99
-    #     return threshold
-
-    # @staticmethod
-    # def get_check_interval(logger=None):
-    #     try:
-    #         interval = MonitorConst.__config.getint("monitor", "check_interval")
-    #     except configparser.Error as ex:
-    #         if logger:
-    #             logger.warning("Getting configuration:(monitor, check_interval) failed:{0}. "
-    #                            "Will use default value.".format(ex))
-    #         interval = 1800
-    #     return interval
-
-    # @staticmethod
-    # def get_max_failure_times(logger=None):
-    #     try:
-    #         max_failure_times = MonitorConst.__config.getint("monitor", "max_failure_times")
-    #     except configparser.Error as ex:
-    #         if logger:
-    #             logger.warning("Getting configuration:(monitor, max_failure_times) failed:{0}. "
-    #                            "Will use default value.".format(ex))
-    #         max_failure_times = 3
-    #     return max_failure_times
 
     @staticmethod
     def is_user_sudoer(logger=None):
@@ -541,6 +507,76 @@ class MonitorUtility:
         #     return rsa.decrypt(byte_to_decrypt, private_data).decode("utf-8")
 
     @staticmethod
+    def generate_check_id():
+        return datetime.now().strftime('%Y%m%d%H%M%S%f')
+
+    @staticmethod
+    def get_time_via_check_id(check_id):
+        return datetime.strptime(check_id, '%Y%m%d%H%M%S%f')
+
+    @staticmethod
+    @contextmanager
+    def open_ssh_connection(logger, operator, server_name, user_name, user_password):
+        ssh = None
+        try:
+            MonitorUtility.log_debug(logger, "Trying to connect {0}.".format(server_name))
+            ssh = operator.open_ssh_connection(server_name, user_name, user_password)
+            if ssh is not None:
+                MonitorUtility.log_debug(logger, "Connected {0}.".format(server_name))
+            yield ssh
+        finally:
+            MonitorUtility.close_ssh_connection(operator, ssh, logger, server_name)
+
+    @staticmethod
+    def close_ssh_connection(operator, ssh, logger=None, server_name=None):
+        if logger is not None:
+            MonitorUtility.log_debug(logger, "Trying to close connection to {0}.".format(server_name))
+        else:
+            MonitorUtility.log_debug(logger, "Trying to close connection")
+        operator.close_ssh_connection(ssh)
+        if logger is not None:
+            if server_name is not None:
+                MonitorUtility.log_debug(logger, "connection to {0} is closed.".format(server_name))
+            else:
+                MonitorUtility.log_debug(logger, "connection is closed.")
+
+    @staticmethod
+    def process_heartbeat(logger, heartbeat_info, consumer, timeout, failure_action):
+        heartbeat_msg_pack = consumer.poll(update_offsets=True)
+        if heartbeat_msg_pack:
+            for tp, messages in heartbeat_msg_pack.items():
+                for message in messages:
+                    # Mc.FIELD_SERVER_ID: server_id, Mc.MSG_TYPE: info_type, Mc.MSG_TIME: datetime.now()})
+                    server_id = message.value[MonitorConst.FIELD_SERVER_ID]
+                    msg_type = message.value[MonitorConst.MSG_TYPE]
+                    msg_time = message.value[MonitorConst.MSG_TIME]
+                    # update heartbeat info
+                    try:
+                        heartbeat_info[server_id][msg_type] = MonitorUtility.get_time_via_check_id(msg_time)
+                    except Exception as ex:
+                        MonitorUtility.log_warning(logger, ("Converting heartbeat time failed with: {0}. Time is {1}, "
+                                                            "message is: {2}").format(ex, msg_time, message.value))
+
+        # no matter there is new message or not, perform heartbeat check anyway
+        MonitorUtility.__check_heartbeat_info(logger, heartbeat_info, timeout, failure_action)
+        MonitorUtility.log_debug(logger, "Processing heartbeat is finished.")
+
+    @staticmethod
+    def __check_heartbeat_info(logger, info, timeout, failure_action):
+        cur_time = datetime.now()
+        # currently, do not consider different type of resource timeout, just use an over all status...
+        for server_id, type_time in info.items():
+            pre_time = datetime.min
+            for info_type, process_time in type_time.items():
+                pre_time = max(pre_time, process_time)
+
+            MonitorUtility.log_debug(logger, ("Heartbeat checking for {0}, current time is {1}, heartbeat "
+                                              "time is {2}").format(server_id, cur_time, pre_time))
+            if (cur_time - pre_time).total_seconds() >= timeout:
+                MonitorUtility.log_info(logger, "Heartbeat timeout for {0}".format(server_id))
+                failure_action(server_id)
+
+    @staticmethod
     def __get_log_message(message):
         return "[{0}] {1}".format(os.getpid(), message)
 
@@ -604,14 +640,12 @@ class Email:
         if receiver is not None and len(receiver) > 0:
             # sending email to the owner of the instance
             email_to = [receiver]
-            email_body = ("Dear {0}, \n\n{1} is running out of memory, the emergency shutdown of your {2} is "
+            email_body = ("Dear {0}, \n\n{1} is running out of memory, the [EMERGENCY SHUTDOWN] of your {2} is "
                           "because of its consuming highest memory ({3}%). "
                           "If this SID is very important and you do not want "
                           "it to be shut down next time, please contact administrator"
-                          " to mark it as an important SID. \n -- this is only a testing email "
-                          "your hana will not be shut down really, please do it manually."
-                          "\n\nRegards,\nHANA OS "
-                          "Monitor".format(employee_name, server_name, sid, usage))
+                          " to mark it as an important SID. \n"
+                          "\n\nRegards,\nHANA OS Monitor".format(employee_name, server_name, sid, usage))
             Email.send_email(
                 sender,
                 email_to,
@@ -623,21 +657,40 @@ class Email:
 
     @staticmethod
     def send_shutdown_email(sender, receiver, sid, server_name, employee_name, admin, usage, info_type):
+        """ Sending email to the owner of the instance that consuming the highest memory for shutting down HANA"""
         if receiver is not None and len(receiver) > 0:
             # sending email to the owner of the instance
             email_to = [receiver]
-            email_body = ("Dear {0}, \n\n{1} is running out of memory, the shutdown of your {2} is "
+            email_body = ("Dear {0}, \n\n{1} is running out of memory, the [SHUTDOWN] of your {2} is "
                           "because of its consuming highest memory ({3}%). "
                           "If this SID is very important and you do not want "
                           "it to be shut down next time, please contact administrator"
-                          " to mark it as an important SID. \n -- this is only a testing email "
-                          "your hana will not be shut down really, please do it manually."
-                          "\n\nRegards,\nHANA OS "
-                          "Monitor".format(employee_name, server_name, sid, usage))
+                          " to mark it as an important SID. \n."
+                          "\n\nRegards,\nHANA OS Monitor".format(employee_name, server_name, sid, usage))
             Email.send_email(
                 sender,
                 email_to,
                 "[MONITOR.{0}] {1} on {2} is Shutting Down".format(info_type.name, sid, server_name),
+                email_body,
+                admin)
+        else:
+            Email.__logger.warning("No email is sent out, because of the empty email receiver.")
+
+    @staticmethod
+    def send_cleaning_disk_email(sender, receiver, sid, server_name, employee_name, admin, usage, info_type):
+        """ Sending email to the owner of the instance that consuming the highest disk space
+        for log backup cleaning"""
+        if receiver is not None and len(receiver) > 0:
+            email_to = [receiver]
+
+            email_body = ("Dear {0}, \n\n{1} is running out of disk space, your {2} is taking the highest amount of "
+                          "disk space ({3} GB). There will be a clean up process for your log backup automatically, "
+                          "all the log backups which older than 10 days will be deleted. \n.\n\nRegards,"
+                          "\nHANA OS Monitor".format(employee_name, server_name, sid, round(usage / 1024 / 1024, 2)))
+            Email.send_email(
+                sender,
+                email_to,
+                "[MONITOR.{0}] Log Backup of {1} on {2} is Cleaning".format(info_type.name, sid, server_name),
                 email_body,
                 admin)
         else:
@@ -655,14 +708,21 @@ class Email:
             Email.__logger.warning("No email is sent out, because of the empty email receiver.")
 
     @staticmethod
+    def send_heartbeat_failure_email(sender, server_name, admin):
+        email_subject = "[MONITOR.HEARTBEAT] No Heartbeat from {0}".format(server_name)
+        email_body = "Heartbeat checking timed out on server {0}, please check the status of that server.".format(
+            server_name)
+        Email.send_email(sender, None, email_subject, email_body, admin)
+
+    @staticmethod
     def send_email(email_from,
                    email_to,
                    email_subject,
                    email_content,
                    email_cc=None,
                    email_password=None,
-                   smtp_server="mail.sap.corp",
-                   smtp_port=25):
+                   smtp_server=None,
+                   smtp_port=None):
         """Tool for sending email.
         email_from: string
         email_to: list, doesn't support string
@@ -683,12 +743,22 @@ class Email:
         email_cc = list(set(email_cc))
         server = None
         try:
+            if not smtp_server:
+                smtp_server = MonitorConst.get_smtp_server()
+            if not smtp_port:
+                smtp_port = MonitorConst.get_smtp_port()
+            if not email_password:
+                try:
+                    email_password = MonitorConst.get_email_password()
+                except Exception as ex:
+                    Email.__logger.error("Retrieve email password failed at {0},use empty password instead.".format(ex))
+                    email_password = None
+
+            if not email_from:
+                email_from = MonitorConst.get_email_sender()
+
             server = smtplib.SMTP(smtp_server, smtp_port)
-            # server.connect('mail.sap.corp', 25)
-            # server.ehlo()
-            # server.starttls()
-            # server.ehlo()
-            if email_password is not None:
+            if email_password is not None and len(email_password) > 0:
                 server.login(email_from, email_password)
 
             email_body = "\r\n".join(["From: {0}".format(email_from),
@@ -727,39 +797,63 @@ class Email:
             total = round(info[MonitorConst.INFO_TOTAL] / 1024 / 1024, 2)
             free = round(info[MonitorConst.INFO_FREE] / 1024 / 1024, 2)
         else:  # MonitorConst.SERVER_INFO_CPU
-            total = 100 - info[MonitorConst.INFO_FREE]  # use total as cpu usage: 100 - free cpu
+            total = round(100 - info[MonitorConst.INFO_FREE], 2)  # use total as cpu usage: 100 - free cpu
             free = 0
 
         server_name = info[MonitorConst.FIELD_SERVER_FULL_NAME]
 
         check_id = info[MonitorConst.FIELD_CHECK_ID]
-        check_time = datetime.strptime(check_id, '%Y%m%d%H%M%S%f')
+        check_time = MonitorUtility.get_time_via_check_id(check_id)
 
-        body = ("Server Name:{0} \n"
-                "\t CPU Utilization: {1}% \n"
-                "\t Check Time:{2}".format(server_name, total, check_time)) \
+        body = ("Server Name: {0} \n"
+                "\t CPU Utilization: {1} % \n"
+                "\t Check Time: {2}".format(server_name, total, check_time)) \
             if email_type == InfoType.CPU else (
                 "Server Name:{0}\n"
-                "\t Total {1}:{2}GB\n"
-                "\t Free {3}:{4}GB\n"
-                "\t Check Time:{5}".format(server_name, email_type.name, total, email_type.name, free, check_time))
+                "\t Total {1}: {2} GB\n"
+                "\t Free {3}: {4} GB\n"
+                "\t Check Time: {5}".format(server_name, email_type.name, total, email_type.name, free, check_time))
 
         # top 5 consumers
         body_additional = "\n Following is the top 5 {0} consumers, check id:{1}:\n ".format(email_type.name, check_id)
-        unit_type = "GB" if email_type == MonitorConst.SERVER_INFO_DISK else "%"
+        unit_type = "GB" if email_type == InfoType.DISK else "%"
         for consumer in info[MonitorConst.INFO_USAGE]:
             if email_type == InfoType.DISK:
-                consuming_info = "Folder:{0}".format(consumer[MonitorConst.FIELD_FOLDER])
+                consuming_info = "Folder: {0}".format(consumer[MonitorConst.FIELD_FOLDER])
+                usage = round(consumer[MonitorConst.FIELD_USAGE] / 1024 / 1024, 2)
             else:
-                consuming_info = "SID:{0}".format(consumer[MonitorConst.FIELD_SID])
+                consuming_info = "SID: {0}".format(consumer[MonitorConst.FIELD_SID])
+                usage = round(consumer[MonitorConst.FIELD_USAGE], 2)
 
-            body_additional = "".join([body_additional, ("\t {0}, Name: {1}, {2} Usage: {3}{4}"
+            body_additional = "".join([body_additional, ("\t {0}, Name: {1}, {2} Usage: {3} {4}"
                                                          "\n".format(consuming_info,
                                                                      consumer[MonitorConst.FIELD_EMPLOYEE_NAME],
                                                                      email_type.name,
-                                                                     consumer[MonitorConst.FIELD_USAGE],
+                                                                     usage,
                                                                      unit_type))])
         body = "".join([body, body_additional])
         # Will add more inform like: "This is the {0} warning email, the HANA instance which
         # consuming the most Memory will be shutdown after THREE warning email!!"
         return body
+
+
+class KafKaUtility:
+    @staticmethod
+    def get_assignments(consumer, *topics):
+        assignments = []
+        for topic in topics:
+            partitions = consumer.partitions_for_topic(topic)
+            for p in partitions:
+                assignments.append(TopicPartition(topic, p))
+
+        return assignments
+
+    @staticmethod
+    def get_topic_partitions(consumer, topic):
+        partitions = consumer.partitions_for_topic(topic)
+        return [TopicPartition(topic, p) for p in partitions]
+
+    @staticmethod
+    def assign_and_seek_to_end(consumer, topic_to_seek, *topics):
+        consumer.assign(KafKaUtility.get_assignments(consumer, *topics))
+        consumer.seek_to_end(*KafKaUtility.get_topic_partitions(consumer, topic_to_seek))

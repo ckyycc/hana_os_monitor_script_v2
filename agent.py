@@ -12,11 +12,11 @@ from util import InfoType
 from errors import MonitorDBOpError
 from errors import MonitorOSOpError
 from abc import ABC, abstractmethod
-from datetime import datetime
 from threading import Thread
 import time
 import re
 import atexit
+
 
 class Monitor(ABC, Thread):
     """The root (abstract) Class for the Monitor Tools
@@ -53,7 +53,7 @@ class Monitor(ABC, Thread):
     def run(self):
         """run the thread"""
         while True:
-            check_id = datetime.now().strftime('%Y%m%d%H%M%S%f')
+            check_id = Mu.generate_check_id()
             self.monitoring(check_id)
             time.sleep(self._get_interval())
 
@@ -487,7 +487,7 @@ class HANAServerOSOperatorService:
                 # for filter purpose, add "/" at the end of mount_point
                 mount_point = "".join([mount_point, "/"])
 
-                disk_usage_info = [{Mc.FIELD_DISK_USAGE_KB: i.split()[0],
+                disk_usage_info = [{Mc.FIELD_DISK_USAGE_KB: int(i.split()[0]),
                                     Mc.FIELD_FOLDER: i.split()[1]
                                     [i.split()[1].startswith(mount_point) and len(mount_point):],
                                     Mc.FIELD_USER_NAME: next(
@@ -589,30 +589,39 @@ class MsgProducerService:
                 bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
                 value_serializer=lambda v: json.dumps(v).encode("ascii"))
             self.__logger = Mu.get_logger(Mc.LOGGER_AGENT_MSG_PRODUCER)
-            self.__topic = Mc.TOPIC_SERVER_MONITORING_INFO
+            self.__topic = Mc.TOPIC_MONITORING_INFO
+            self.__topic_heartbeat = Mc.TOPIC_AGENT_HEARTBEAT
 
     def delivery(self, info_list, info_type, server_id):
-        if info_list:
-            # as producer doesn't support transaction
-            # https://github.com/dpkp/kafka-python/issues/1396
-            # https://github.com/dpkp/kafka-python/issues/1063
-            # add message begin and end part, consumer will abandon all messages if missing begin or end
-            # header
-            Mu.log_debug(self.__logger, "Sending {0} message header to queue...".format(info_type))
-            self.__producer.send(self.__topic, MsgProducerService.__get_message_header(info_type, server_id))
-            # body
-            for info in info_list:
-                # for all messages, add type and server id
-                info[Mc.MSG_TYPE] = info_type
-                info[Mc.FIELD_SERVER_ID] = server_id
-                Mu.log_debug(self.__logger, "Sending {0} info {1} to queue...".format(info_type, info))
-                self.__producer.send(self.__topic, info)
-                Mu.log_debug(self.__logger, "{0} info {1} is sent to queue...".format(info_type, info))
-            # ending
-            Mu.log_debug(self.__logger, "Sending {0} message ending to queue...".format(info_type))
-            self.__producer.send(self.__topic, MsgProducerService.__get_message_ending(info_type, server_id))
+        try:
+            # send heartbeat data
+            self.__producer.send(self.__topic_heartbeat, {
+                Mc.FIELD_SERVER_ID: server_id, Mc.MSG_TYPE: info_type, Mc.MSG_TIME: Mu.generate_check_id()})
             self.__producer.flush()
-            Mu.log_debug(self.__logger, "Sending {0} message to queue is finished...".format(info_type))
+            if info_list:
+                # as producer doesn't support transaction
+                # https://github.com/dpkp/kafka-python/issues/1396
+                # https://github.com/dpkp/kafka-python/issues/1063
+                # add message begin and end part, consumer will abandon all messages if missing begin or end
+                # header
+                Mu.log_debug(self.__logger, "Sending {0} message header to queue...".format(info_type))
+                self.__producer.send(self.__topic, MsgProducerService.__get_message_header(info_type, server_id))
+                # body
+                for info in info_list:
+                    # for all messages, add type and server id
+                    info[Mc.MSG_TYPE] = info_type
+                    info[Mc.FIELD_SERVER_ID] = server_id
+                    Mu.log_debug(self.__logger, "Sending {0} info {1} to queue...".format(info_type, info))
+                    self.__producer.send(self.__topic, info)
+                    Mu.log_debug(self.__logger, "{0} info {1} is sent to queue...".format(info_type, info))
+                # ending
+                Mu.log_debug(self.__logger, "Sending {0} message ending to queue...".format(info_type))
+                self.__producer.send(self.__topic, MsgProducerService.__get_message_ending(info_type, server_id))
+                self.__producer.flush()
+                Mu.log_debug(self.__logger, "Sending {0} message to queue is finished...".format(info_type))
+        except Exception as ex:
+            Mu.log_error(self.__logger, "Some thing wrong when delivering, error: {0}".format(ex))
+
 
     @staticmethod
     def __get_message_header(msg_type, server_id):
@@ -642,7 +651,7 @@ class Agent:
 
     def __init__(self):
         self.PID_FILE = "/tmp/monitor_agent.pid"
-        self.server_id = '-1'
+        self.server_id = 0
         self.mount_point = '/usr/sap'
         self.m_frequency = 15
         self.d_frequency = 3600
@@ -705,7 +714,7 @@ class Agent:
                 if o in ("-h", "--help"):
                     self.help()
                 elif o in "--server_id":
-                    self.server_id = a
+                    self.server_id = int(a)
                     print("server_id:", self.server_id)
                 elif o in "--mount_point":
                     self.mount_point = a

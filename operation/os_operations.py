@@ -38,6 +38,10 @@ class LinuxOperator:
                 Mu.log_error(self.__logger, "Failed to close SSH connection with error:{0}{1}.".format(ex, server_name))
 
     def __ssh_exec_command(self, command, ssh, stdin_param=None, backend=False):
+        if ssh is None:
+            Mu.log_warning(self.__logger, "Skipped Command:{0} for empty ssh connection".format(command))
+            return
+
         try:
             # only enable get_pty without input parameters (the output contains '\r\h' when get_pty=true)
             pty_flag = False if stdin_param is None else True
@@ -143,10 +147,13 @@ class LinuxOperator:
             # modified at 2019/07/05
             sudo_password = os_pwd if neeed_sudo_pwd else None
             cmd_output = self.__ssh_exec_command(
-                "sudo du --exclude={0}/tmp --exclude={0}/temp --exclude={0}/shared --exclude=/usr/sap/eua_paths "
-                "--max-depth=1 {0}".format(mount_point),
+                "sudo find {0} -maxdepth 1 -type d |  egrep '^{0}/[A-Z][A-Z0-9][A-Z0-9]$' | "
+                "xargs du -L --max-depth=0 2>>/dev/null".format(mount_point),
+                # "sudo du --exclude={0}/tmp --exclude={0}/temp --exclude={0}/shared --exclude=/usr/sap/eua_paths "
+                # "--max-depth=1 {0}".format(mount_point),  -- changed to above solution at 2019/12/03
                 ssh,
                 sudo_password)
+
         else:
             # exclude mount_point/tmp: --exclude=/usr/sap/tmp. It's for the hanging issue of llbpal97,
             # modified at 2018/07/22
@@ -155,8 +162,10 @@ class LinuxOperator:
             # exclude mount_point/temp. It's for hanging issue of llbpal96
             # modified at 2019/07/05
             cmd_output = self.__ssh_exec_command(
-                "du --exclude={0}/tmp --exclude={0}/temp --exclude={0}/shared --exclude=/usr/sap/eua_paths "
-                "--max-depth=1 {0} 2>>/dev/null".format(mount_point), ssh)
+                # "du --exclude={0}/tmp --exclude={0}/temp --exclude={0}/shared --exclude=/usr/sap/eua_paths "
+                # "--max-depth=1 {0} 2>>/dev/null".format(mount_point), ssh) -- changed to above solution at 2019/12/03
+                "find {0} -maxdepth 1 -type d |  egrep '^{0}/[A-Z][A-Z0-9][A-Z0-9]$' | "
+                "xargs du -L --max-depth=0 2>>/dev/null".format(mount_point), ssh)
 
         return cmd_output
 
@@ -178,9 +187,13 @@ class LinuxOperator:
         return self.__ssh_exec_command("cut -d: -f1 /etc/passwd | grep ^[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][a]dm$", ssh)
 
     def shutdown_hana(self, ssh):
-        # cmd_output = self.__ssh_exec_command('nohup bash -lc "HDB stop" >/dev/null 2>&1 &', ssh)
-        # Mu.log_debug(self.__logger, "shutting down hana, output:{0}".format(cmd_output))
-        pass
+        cmd_output = self.__ssh_exec_command('nohup bash -lc "HDB stop" >/dev/null 2>&1 &', ssh)
+        Mu.log_debug(self.__logger, "shutting down hana, output:{0}".format(cmd_output))
+
+    def clean_log_backup(self, ssh, sid):
+        self.__ssh_exec_command(
+            'find /usr/sap/{0}/HDB[0-9][0-9]/backup -name "log_backup_*.*" -mtime +10 -type f -delete'.format(sid), ssh)
+        Mu.log_debug(self.__logger, "cleaned log backup for {0}.".format(sid))
 
 
 class SUSEOperator(LinuxOperator):

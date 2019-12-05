@@ -18,7 +18,7 @@ class DataAnalyzer(Thread):
         self.__producer = KafkaProducer(
             bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
             value_serializer=lambda v: json.dumps(v).encode('ascii'))
-        self.__topic = Mc.TOPIC_SERVER_MONITORING_FILTERED_INFO
+        self.__topic = Mc.TOPIC_FILTERED_INFO
         self.__mem_info_analyzer = DataAnalyzer.__MemoryInfoAnalyzer()
         self.__cpu_info_analyzer = DataAnalyzer.__CPUInfoAnalyzer()
         self.__disk_info_analyzer = DataAnalyzer.__DiskInfoAnalyzer()
@@ -93,7 +93,7 @@ class DataAnalyzer(Thread):
     def run(self):
         """run the thread"""
         while True:
-            consumer = KafkaConsumer(Mc.TOPIC_SERVER_MONITORING_INFO,
+            consumer = KafkaConsumer(Mc.TOPIC_MONITORING_INFO,
                                      group_id=Mc.MONITOR_GROUP_ID,
                                      bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
                                      value_deserializer=lambda m: json.loads(m.decode('ascii')))

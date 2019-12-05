@@ -2,6 +2,7 @@ import threading
 import json
 
 from kafka import KafkaProducer
+from kafka import KafkaConsumer
 from kafka.errors import KafkaError
 
 from operation.db_operations import HANAMonitorDAO
@@ -20,6 +21,7 @@ class ConfigMonitor(threading.Thread):
         self.__producer = KafkaProducer(
             bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
             value_serializer=lambda v: json.dumps(v).encode('ascii'))
+
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_CONFIG_MGR)
         self.__topic = Mc.TOPIC_CONFIGURATION
         self.__configs = {}

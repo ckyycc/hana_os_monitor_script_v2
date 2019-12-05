@@ -1,24 +1,30 @@
 import json
 
-from threading import Thread
 from kafka import KafkaConsumer
 from kafka import KafkaProducer
+from kafka.structs import TopicPartition
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
+from util import KafKaUtility as Ku
 from util import InfoType
 from util import Email
 from util import ActionType
 from datetime import datetime
 from operation.db_operations import HANAMonitorDAO
+import time
+import threading
 
 
-class AlarmOperator(Thread):
+class AlarmOperator(threading.Thread):
 
     def __init__(self):
         super().__init__()
 
         self.__db_operator = AlarmOperator.__HANAOperatorService()
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR_ALARM)
+        self.__heartbeat_interval = 5  # TODO config
+        self.__heartbeat_timeout = 120  # TODO config
+        self.__heartbeat_email_interval = 240  # TODO config
         self.cpu_threshold = 0
         self.mem_threshold = 0
         self.disk_threshold = 0
@@ -26,10 +32,14 @@ class AlarmOperator(Thread):
         self.operation_time = ""
         self.max_failure_times = 3
         self.mem_emergency_threshold = 0
+        self.check_interval = 0
+        self.servers = []
+
         self.__producer = KafkaProducer(
             bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
             value_serializer=lambda v: json.dumps(v).encode("ascii"))
         self.__topic = Mc.TOPIC_APP_OPERATION
+        self.__heartbeat_email_info = {}
 
     def __operate(self, consumer):
         operators = {
@@ -37,17 +47,30 @@ class AlarmOperator(Thread):
             InfoType.CPU.value: self.__operate_cpu,
             InfoType.DISK.value: self.__operate_disk
         }
+        alarm = {}
+        emergency_alarm = {}
         for msg in consumer:
             if not msg or not msg.value:
                 continue
-
-            # update configuration
-            self.__update_configuration(msg.value)
-
             # process filtered message
-            alarm = {}
+            if Mc.MSG_TYPE not in msg.value or msg.value[Mc.MSG_TYPE] not in operators:
+                # update configuration
+                self.__update_configuration(msg.value)
+                # if configuration is ready, update subscription
+                if self.__check_configuration() and len(consumer.assignment()) < 2:
+                    # consumer.subscribe([Mc.TOPIC_SERVER_MONITORING_FILTERED_INFO, Mc.TOPIC_CONFIGURATION])
+                    # start heartbeat checking
+                    # use assign instead subscribe because the error: https://github.com/dpkp/kafka-python/issues/601
+                    # consumer.assign(Ku.get_assignments(consumer, [Mc.TOPIC_FILTERED_INFO, Mc.TOPIC_CONFIGURATION]))
+                    # consumer.seek_to_end(*Ku.get_topic_partitions(consumer, Mc.TOPIC_FILTERED_INFO))
+                    Ku.assign_and_seek_to_end(
+                        consumer, Mc.TOPIC_FILTERED_INFO, *[Mc.TOPIC_FILTERED_INFO, Mc.TOPIC_CONFIGURATION])
 
-            if Mc.MSG_TYPE in msg.value and msg.value[Mc.MSG_TYPE] in operators:
+                    heartbeat_thread = threading.Thread(target=self.__process_heartbeat)
+                    heartbeat_thread.start()
+
+            else:
+                # if configuration is not initialized, all data will be ignored
                 top5_consumers = operators[msg.value[Mc.MSG_TYPE]](msg.value)
                 server_id = msg.value[Mc.FIELD_SERVER_ID]
                 msg_type = msg.value[Mc.MSG_TYPE]
@@ -55,15 +78,25 @@ class AlarmOperator(Thread):
                     server_name = top5_consumers[Mc.FIELD_SERVER_FULL_NAME]
                     mem_free = top5_consumers[Mc.INFO_FREE]
                     mem_total = top5_consumers[Mc.INFO_TOTAL]
+                    # calculate emergency status
+                    if msg_type == InfoType.MEMORY.value and \
+                            float(mem_free) / mem_total * 100 <= self.mem_emergency_threshold:
+                        cur_time = datetime.now()
+                        pre_time = emergency_alarm.get(server_id, cur_time)
+                        if cur_time != pre_time and (cur_time - pre_time).total_seconds() < self.check_interval:  # TODO add config
+                            # only perform emergency shutdown every hour
+                            continue
+                        emergency_alarm[server_id] = cur_time
 
-                    highest_consumer = AlarmOperator.__get_highest_consumption_info(top5_consumers[Mc.INFO_USAGE])
-                    email = highest_consumer[Mc.FIELD_EMAIL]
-                    employee_name = highest_consumer[Mc.FIELD_EMPLOYEE_NAME]
-                    user_name = highest_consumer[Mc.FIELD_USER_NAME]  # for shutdown (in app operator)
-                    sid = highest_consumer[Mc.FIELD_SID]
-                    mem_usage = highest_consumer[Mc.FIELD_USAGE]
+                        try:
+                            email, employee_name, user_name, sid, mem_usage = \
+                                AlarmOperator.__get_highest_consumption_info(top5_consumers[Mc.INFO_USAGE])
+                        except Exception as ex:
+                            Mu.log_warning(self.__logger,
+                                           "Call __get_highest_consumption_info for {0} failed with exception {1}."
+                                           .format(top5_consumers[Mc.INFO_USAGE], ex))
+                            continue
 
-                    if msg_type == InfoType.MEMORY.value and mem_free / mem_total <= self.mem_emergency_threshold:
                         # trigger the emergency shutdown
                         admin = self.__db_operator.get_email_admin(server_id)
 
@@ -77,7 +110,11 @@ class AlarmOperator(Thread):
                         )
 
                         self.__send_shutdown_message(server_name, sid, user_name)
+                        # no need to check further
                         continue
+                    elif msg_type == InfoType.MEMORY.value and mem_free / mem_total > self.mem_emergency_threshold:
+                        # reset the emergency alarm for the server if it is not in emergency status
+                        emergency_alarm.pop(server_id, None)
 
                     # If it's not working time, skip sending email and shutdown )
                     if not Mu.is_current_time_working_time(self.operation_time):
@@ -86,11 +123,10 @@ class AlarmOperator(Thread):
 
                     email_flag = 0
                     # update alarm info
-                    if server_id in alarm:
-                        if msg_type not in alarm[server_id]:
-                            alarm[server_id][msg_type] = {Mc.INFO_ALARM_TIME: datetime.now(), Mc.INFO_ALARM_NUM: 0}
-                    else:
+                    if server_id not in alarm:
                         alarm[server_id] = {msg_type: {Mc.INFO_ALARM_TIME: datetime.now(), Mc.INFO_ALARM_NUM: 0}}
+                    elif msg_type not in alarm[server_id]:
+                        alarm[server_id][msg_type] = {Mc.INFO_ALARM_TIME: datetime.now(), Mc.INFO_ALARM_NUM: 0}
 
                     if alarm[server_id][msg_type][Mc.INFO_ALARM_NUM] == 0:
                         alarm[server_id][msg_type][Mc.INFO_ALARM_NUM] = 1
@@ -100,11 +136,11 @@ class AlarmOperator(Thread):
                     else:
                         pre_time = alarm[server_id][msg_type][Mc.INFO_ALARM_TIME]
                         cur_time = datetime.now()
-                        if (cur_time - pre_time).total_seconds() >= 3600:  # every hour sending next alarm mail
+                        # every checking interval sending next alarm mail
+                        if (cur_time - pre_time).total_seconds() >= self.check_interval:
                             alarm[server_id][msg_type][Mc.INFO_ALARM_NUM] += 1
                             alarm[server_id][msg_type][Mc.INFO_ALARM_TIME] = cur_time
-                            if alarm[server_id][msg_type][Mc.INFO_ALARM_NUM] > self.max_failure_times and \
-                                    msg_type == InfoType.MEMORY.value:
+                            if alarm[server_id][msg_type][Mc.INFO_ALARM_NUM] > self.max_failure_times:
                                 email_flag = 2
                             else:
                                 email_flag = 1
@@ -123,25 +159,48 @@ class AlarmOperator(Thread):
                                                  admin)
 
                     if email_flag == 2:
-                        # trigger the shutdown
-                        admin = self.__db_operator.get_email_admin(server_id)
 
-                        # sending email to the owner of the instance
-                        Mu.log_info(self.__logger,
-                                    "Try to sending shutdown email for {0} on {1}, because server "
-                                    "is running out of memory and {2} is consuming highest "
-                                    "({3}%) memory.".format(sid, server_name, user_name, mem_usage))
-                        Email.send_shutdown_email(
-                            self.email_sender, email, sid, server_name, employee_name, admin, mem_usage, InfoType.MEMORY
-                        )
+                        try:
+                            email, employee_name, user_name, sid, usage = \
+                                AlarmOperator.__get_highest_consumption_info(top5_consumers[Mc.INFO_USAGE])
+                            admin = self.__db_operator.get_email_admin(server_id)
+                        except Exception as ex:
+                            Mu.log_warning(self.__logger,
+                                           "Call __get_highest_consumption_info for {0} failed with exception {1}."
+                                           .format(top5_consumers[Mc.INFO_USAGE], ex))
+                            continue
+                        if msg_type == InfoType.MEMORY.value:
+                            # sending email to the owner of the instance
+                            Mu.log_info(self.__logger,
+                                        "Try to sending shutdown email for {0} on {1}, because server "
+                                        "is running out of memory and {2} is consuming highest "
+                                        "({3}%) memory.".format(sid, server_name, user_name, usage))
+                            Email.send_shutdown_email(
+                                self.email_sender, email, sid, server_name, employee_name, admin, usage, InfoType.MEMORY
+                            )
+                            # trigger the shutdown --> send shutdown message
+                            self.__send_shutdown_message(server_name, sid, user_name)
+                        elif msg_type == InfoType.DISK.value:
+                            # sending email to the owner of the instance
+                            Mu.log_info(self.__logger,
+                                        "Try to sending email for {0} on {1}, because server "
+                                        "is running out of Disk and {2} is consuming highest "
+                                        "({3}%) memory.".format(sid, server_name, user_name, usage))
+                            Email.send_cleaning_disk_email(
+                                self.email_sender, email, sid, server_name, employee_name, admin, usage, InfoType.DISK
+                            )
 
-                        # send shutdown message
-                        self.__send_shutdown_message(server_name, sid, user_name)
+                            # trigger the shutdown --> send shutdown message
+                            self.__send_cleaning_message(server_name, sid, user_name)
 
                 else:
                     # everything is good, reset the alarm for server_id and msg type
                     if server_id in alarm and msg_type in alarm[server_id]:
-                        alarm[server_id][msg_type] = {}
+                        alarm[server_id][msg_type][Mc.INFO_ALARM_NUM] = 0
+
+    def __check_configuration(self):
+        return self.servers and \
+               self.cpu_threshold and self.mem_threshold and self.disk_threshold and self.mem_emergency_threshold
 
     def __update_configuration(self, msg):
         """update configuration from message"""
@@ -153,7 +212,7 @@ class AlarmOperator(Thread):
         operation_time_key = "OPERATION_TIME"
         max_failure_times_key = "MAX_FAILURE_TIMES_INT"
         mem_emergency_threshold_key = "THRESHOLD_MEM_EMERGENCY_SHUTDOWN_INT"
-
+        check_interval_key = "CHECK_INTERVAL_INT"
         # update configuration
         if cpu_threshold_key in msg and msg[cpu_threshold_key] != self.cpu_threshold:
             self.cpu_threshold = msg[cpu_threshold_key]
@@ -164,7 +223,7 @@ class AlarmOperator(Thread):
             Mu.log_info(self.__logger, "Memory usage threshold is: {0}".format(self.mem_threshold))
 
         if disk_threshold_key in msg and msg[disk_threshold_key] != self.disk_threshold:
-            self.mem_threshold = msg[disk_threshold_key]
+            self.disk_threshold = msg[disk_threshold_key]
             Mu.log_info(self.__logger, "Disk usage threshold is: {0}".format(self.disk_threshold))
 
         if email_sender_key in msg and msg[email_sender_key] != self.email_sender:
@@ -183,15 +242,81 @@ class AlarmOperator(Thread):
             self.mem_emergency_threshold = msg[mem_emergency_threshold_key]
             Mu.log_info(self.__logger, "Memory emergency threshold is: {0}".format(self.mem_emergency_threshold))
 
+        if check_interval_key in msg and msg[check_interval_key] != self.check_interval:
+            self.check_interval = msg[check_interval_key]
+            Mu.log_info(self.__logger, "Check interval  is: {0}".format(self.check_interval))
+
+        if Mc.DB_CONFIGURATION_SERVER in msg and msg[Mc.DB_CONFIGURATION_SERVER] != self.servers:
+            self.servers = msg[Mc.DB_CONFIGURATION_SERVER]
+
+    def __process_heartbeat(self):
+        try:
+            heartbeat_consumer = KafkaConsumer(
+                        # Mc.TOPIC_AGENT_HEARTBEAT,  seek_to_end failed with no partition assigned, try manually assign
+                        group_id=Mc.MONITOR_GROUP_ID_ALARM_HEARTBEAT,
+                        bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
+                        value_deserializer=lambda m: json.loads(m.decode('ascii')))
+            # skip all previous messages, not care about past
+            # use assign instead subscribe because the error: https://github.com/dpkp/kafka-python/issues/601
+            # consumer.assign([TopicPartition(topic=Mc.TOPIC_AGENT_HEARTBEAT, partition=0)])
+            # consumer.seek_to_end()
+
+            Ku.assign_and_seek_to_end(heartbeat_consumer, Mc.TOPIC_AGENT_HEARTBEAT, Mc.TOPIC_AGENT_HEARTBEAT)
+            # consumer.assign(Ku.get_assignments(consumer, [Mc.TOPIC_AGENT_HEARTBEAT]))
+            # consumer.seek_to_end(*Ku.get_topic_partitions(consumer, Mc.TOPIC_AGENT_HEARTBEAT))
+
+            # init heartbeat_info for all servers
+            heartbeat_info = {s[Mc.FIELD_SERVER_ID]: {InfoType.MEMORY.value: datetime.now()} for s in self.servers}
+
+            while True:
+                Mu.process_heartbeat(self.__logger,
+                                     heartbeat_info,
+                                     heartbeat_consumer,
+                                     self.__heartbeat_timeout,
+                                     self.__send_heartbeat_failure_message)
+
+                time.sleep(self.__heartbeat_interval)
+        except Exception as ex:
+            Mu.log_error(self.__logger, "Error occurred when checking heartbeat, error:{0}".format(ex))
+
+    def __send_heartbeat_failure_message(self, server_id):
+        pre_time = self.__heartbeat_email_info.get(server_id, datetime.min)
+        cur_time = datetime.now()
+
+        if (cur_time - pre_time).total_seconds() >= self.__heartbeat_email_interval:
+            servers = [s for s in self.servers if s[Mc.FIELD_SERVER_ID] == server_id]
+            admin = self.__db_operator.get_email_admin(server_id)
+            for server in servers:
+                Mu.log_info(self.__logger,
+                            "Sending heartbeat failure message for {0}.".format(server[Mc.FIELD_SERVER_FULL_NAME]))
+                Email.send_heartbeat_failure_email(self.email_sender, server[Mc.FIELD_SERVER_FULL_NAME], admin)
+            # update the email sending time
+            self.__heartbeat_email_info[server_id] = cur_time
+        else:
+            Mu.log_debug(self.__logger, ("heartbeat failed for {0}, but email is not sent due to the configured"
+                                         " email sending interval time.").format(server_id))
+
     def __send_shutdown_message(self, server_name, sid, user_name):
         Mu.log_debug(
-            self.__logger, "Sending emergency shutdown message {0} on {1} ...".format(sid, server_name))
+            self.__logger, "Sending shutdown message of {0} on {1} ...".format(sid, server_name))
         # send shutdown message
         self.__producer.send(self.__topic, AlarmOperator.__generate_action_message(
             server_name, sid, user_name, ActionType.SHUTDOWN.value))
 
         Mu.log_debug(
-            self.__logger, "Emergency shutdown message {0} on {1} is sent".format(sid, server_name))
+            self.__logger, "Shutdown message of {0} on {1} is sent".format(sid, server_name))
+
+    def __send_cleaning_message(self, server_name, sid, user_name):
+        Mu.log_debug(
+            self.__logger,
+            "Sending log backup cleaning message of {0} on {1} for {2} ...".format(sid, server_name, user_name))
+        # send shutdown message
+        self.__producer.send(self.__topic, AlarmOperator.__generate_action_message(
+            server_name, sid, user_name, ActionType.CLEAN_LOG_BACKUP.value))
+
+        Mu.log_debug(
+            self.__logger,
+            "Log backup cleaning message of {0} on {1} for {2} is sent".format(sid, server_name, user_name))
 
     def __operate_memory(self, info):
         mem_free = info[Mc.FIELD_MEM_FREE]
@@ -202,8 +327,8 @@ class AlarmOperator(Thread):
         if mem_free is None or mem_free < 0 or mem_total is None or mem_total <= 0 or self.mem_threshold <= 0:
             return
 
-        free_mem_threshold = ((100 - self.mem_threshold) * mem_total) / 100
-        Mu.log_info(self.__logger, "Server:{0}, check_id:{1}, free Memory:{2}, threshold:{3}".format(
+        free_mem_threshold = ((100 - self.mem_threshold) * mem_total) / 100.0
+        Mu.log_debug(self.__logger, "Server:{0}, check_id:{1}, free Memory:{2}, threshold:{3}".format(
             server_id, check_id, mem_free, free_mem_threshold))
 
         # prepare all info if size of free memory < threshold
@@ -225,6 +350,7 @@ class AlarmOperator(Thread):
 
     def __operate_cpu(self, info):
         cpu_usage = info[Mc.FIELD_CPU_UTILIZATION]
+        cpu_num = info[Mc.FIELD_CPU_NUMBER]
         server_id = info[Mc.FIELD_SERVER_ID]
         check_id = info[Mc.FIELD_CHECK_ID]
 
@@ -235,7 +361,7 @@ class AlarmOperator(Thread):
             server_id, check_id, cpu_usage, self.cpu_threshold))
 
         # prepare all info if size of free memory < threshold
-        if cpu_usage > self.cpu_threshold:
+        if cpu_usage >= self.cpu_threshold:
             cpu_consumers = list(info[Mc.MSG_INFO].items())
             cpu_consumers.sort(key=lambda v: v[1], reverse=True)  # sort by desc
             del cpu_consumers[5:]  # only keep the top 5
@@ -245,8 +371,8 @@ class AlarmOperator(Thread):
 
             # combine usage info
             for user_info in top_5_consumers.get(Mc.INFO_USAGE, []):
-                # {"user1": 12.2, "user2": 13.2}
-                user_info[Mc.FIELD_USAGE] = info[Mc.MSG_INFO][user_info[Mc.FIELD_USER_NAME]]  # set the usage
+                # set the usage {"user1": 12.2, "user2": 13.2}
+                user_info[Mc.FIELD_USAGE] = info[Mc.MSG_INFO][user_info[Mc.FIELD_USER_NAME]] / float(cpu_num)
 
             return top_5_consumers
 
@@ -257,7 +383,7 @@ class AlarmOperator(Thread):
         disk_free = info[Mc.FIELD_DISK_FREE]
         disk_total = info[Mc.FIELD_DISK_TOTAL]
 
-        free_disk_threshold = ((100 - self.disk_threshold) * disk_total) / 100
+        free_disk_threshold = ((100 - self.disk_threshold) * disk_total) / 100.0
 
         Mu.log_debug(self.__logger, "Server:{0}, check_id:{1}, free disk:{2}, threshold:{3}".format(
             server_id, check_id, disk_free, free_disk_threshold))
@@ -272,10 +398,7 @@ class AlarmOperator(Thread):
             disk_consumers.sort(key=lambda v: next(iter(v[1].values())), reverse=True)  # sort by desc
             del disk_consumers[5:]  # only keep the top 5
 
-            users = []
-            for folder in disk_consumers:
-                users.append(next(iter(folder[1].keys())))
-
+            users = [next(iter(folder[1].keys())) for folder in disk_consumers]
             top_5_consumers = self.__get_users_info(server_id, check_id, users, InfoType.DISK, disk_free, disk_total)
 
             # combine usage info
@@ -327,19 +450,35 @@ class AlarmOperator(Thread):
         usage = -1
         highest_consumer = {}
         for consumer in top5_consumers:
-            if consumer[Mc.FIELD_USAGE] > usage and not consumer[Mc.FIELD_FILTER_FLAG]:  # skip filtered instance
+            # should skip filtered instance
+            if consumer[Mc.FIELD_USAGE] > usage and (
+                    Mc.FIELD_FILTER_FLAG not in consumer or not consumer[Mc.FIELD_FILTER_FLAG]):
                 usage = consumer[Mc.FIELD_USAGE]
                 highest_consumer = consumer
-        return highest_consumer
+
+        email = highest_consumer[Mc.FIELD_EMAIL]
+        employee_name = highest_consumer[Mc.FIELD_EMPLOYEE_NAME]
+        user_name = highest_consumer[Mc.FIELD_USER_NAME]  # for shutdown (in app operator)
+        sid = highest_consumer[Mc.FIELD_SID]
+        mem_usage = highest_consumer[Mc.FIELD_USAGE]
+        return email, employee_name, user_name, sid, mem_usage
+
+    def __periodic_check(self):
+        """perform periodic check"""
+        while True:
+
+            time.sleep(self.check_interval)
 
     def run(self):
         """run the thread"""
         while True:
             consumer = KafkaConsumer(
-                topics=[Mc.TOPIC_SERVER_MONITORING_FILTERED_INFO, Mc.TOPIC_CONFIGURATION],
                 group_id=Mc.MONITOR_GROUP_ID_ALARM,  # should be in different group with others
                 bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
                 value_deserializer=lambda m: json.loads(m.decode('ascii')))
+
+            consumer.assign(Ku.get_assignments(consumer, Mc.TOPIC_CONFIGURATION))
+            # consumer.subscribe(Mc.TOPIC_CONFIGURATION)
             self.__operate(consumer)
             Mu.log_warning(self.__logger, "Topic is empty or connection is lost. Trying to reconnect...")
 
@@ -353,14 +492,17 @@ class AlarmOperator(Thread):
             self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR_ALARM)
 
         def get_email_admin(self, server_id):
-            return self.__monitor_dao.get_email_admin(server_id)
+            db_output = self.__monitor_dao.get_email_admin(server_id)
+            try:
+                administrators = [admin[0] for admin in db_output]
+            except Exception as ex:
+                administrators = []
+                Mu.log_warning(self.__logger, "Parsing DB output failed in 'get_email_admin' "
+                                              "with error: {0}, the output: {1}".format(ex, db_output))
+            return administrators
 
         def get_users_info(self, server_id, users):
-            consumers = []
-            for user in users:
-                consumers.append(user[0])
-
-            db_output = self.__monitor_dao.get_info_by_5_sidadm_users(server_id, consumers)
+            db_output = self.__monitor_dao.get_info_by_5_sidadm_users(server_id, users)
             try:
                 users_info = [{
                     Mc.FIELD_SERVER_FULL_NAME: u[1],
