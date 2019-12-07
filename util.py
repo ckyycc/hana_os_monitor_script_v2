@@ -224,7 +224,6 @@ class MonitorConst:
     def get_email_password():
         return MonitorConst.__config.get("monitor.alarm", "email_password")
 
-
     @staticmethod
     def __get_db_configuration_not_real_time(name, component, db_operator, logger=None):
         """If local variable exists, get configuration from local variable.
@@ -336,8 +335,11 @@ class MonitorUtility:
     gen_sid_list: Generate all the SIDs by the given sid_start and sid_end
     send_email: Send email via mail.sap.corp
     """
-    logging.config.fileConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config/logging.ini"))
-    __logger = logging.getLogger(MonitorConst.LOGGER_MONITOR_UTILITY)
+    try:
+        logging.config.fileConfig(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config/logging.ini"))
+        __logger = logging.getLogger(MonitorConst.LOGGER_MONITOR_UTILITY)
+    except FileNotFoundError as ex:
+        print("Initializing logger failed with exception {0}".format(ex))
 
     @staticmethod
     def is_float(string_to_check):

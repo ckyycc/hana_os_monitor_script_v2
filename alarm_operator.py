@@ -1,8 +1,5 @@
-import json
-
 from kafka import KafkaConsumer
 from kafka import KafkaProducer
-from kafka.structs import TopicPartition
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
 from util import KafKaUtility as Ku
@@ -13,6 +10,7 @@ from datetime import datetime
 from operation.db_operations import HANAMonitorDAO
 import time
 import threading
+import json
 
 
 class AlarmOperator(threading.Thread):
@@ -58,11 +56,8 @@ class AlarmOperator(threading.Thread):
                 self.__update_configuration(msg.value)
                 # if configuration is ready, update subscription
                 if self.__check_configuration() and len(consumer.assignment()) < 2:
-                    # consumer.subscribe([Mc.TOPIC_SERVER_MONITORING_FILTERED_INFO, Mc.TOPIC_CONFIGURATION])
                     # start heartbeat checking
                     # use assign instead subscribe because the error: https://github.com/dpkp/kafka-python/issues/601
-                    # consumer.assign(Ku.get_assignments(consumer, [Mc.TOPIC_FILTERED_INFO, Mc.TOPIC_CONFIGURATION]))
-                    # consumer.seek_to_end(*Ku.get_topic_partitions(consumer, Mc.TOPIC_FILTERED_INFO))
                     Ku.assign_and_seek_to_end(
                         consumer, Mc.TOPIC_FILTERED_INFO, *[Mc.TOPIC_FILTERED_INFO, Mc.TOPIC_CONFIGURATION])
 

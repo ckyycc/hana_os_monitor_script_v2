@@ -34,9 +34,6 @@ class Monitor(ABC, Thread):
         """Accept the visitors to perform the DB operations"""
         dispatcher.dispatch(self)
 
-    def get_os_operator(self):
-        return self._os_operator
-
     def get_msg_producer(self):
         return self._msg_producer
 
@@ -73,6 +70,7 @@ class MemoryMonitor(Monitor):
 
         Mu.log_debug(self.__logger, "[{0}]Memory Monitoring begin...".format(check_id))
         Mu.log_debug(self.__logger, "Trying to get memory overview of {0}".format(server_name))
+
         # collect memory info: total memory and free memory
         mem_total, mem_free = self._os_operator.collect_mem_info(server_name)
         Mu.log_debug(self.__logger,
@@ -622,14 +620,13 @@ class MsgProducerService:
         except Exception as ex:
             Mu.log_error(self.__logger, "Some thing wrong when delivering, error: {0}".format(ex))
 
-
     @staticmethod
     def __get_message_header(msg_type, server_id):
-        return {"type": msg_type, Mc.FIELD_SERVER_ID: server_id, Mc.MSG_HEADER: True}
+        return {Mc.MSG_TYPE: msg_type, Mc.FIELD_SERVER_ID: server_id, Mc.MSG_HEADER: True}
 
     @staticmethod
     def __get_message_ending(msg_type, server_id):
-        return {"type": msg_type, Mc.FIELD_SERVER_ID: server_id, Mc.MSG_ENDING: True}
+        return {Mc.MSG_TYPE: msg_type, Mc.FIELD_SERVER_ID: server_id, Mc.MSG_ENDING: True}
 
 
 class Agent:
