@@ -1,6 +1,5 @@
-import unittest
-from unittest.mock import MagicMock, call
-from unittest.mock import patch
+from unittest import TestCase
+from unittest.mock import MagicMock, call, patch
 
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
@@ -9,7 +8,7 @@ from util import InfoType
 from agent import DiskMonitor, MemoryMonitor, CPUMonitor, InstanceInfoMonitor, MsgProducerService
 
 
-class TestAgent(unittest.TestCase):
+class TestAgent(TestCase):
     def setUp(self):
         self.server_id = 1
         self.check_id = "20191125010101001"
@@ -203,7 +202,3 @@ class TestAgent(unittest.TestCase):
         ]
 
         mock_producer.return_value.send.assert_has_calls(calls, any_order=False)  # should be sequential
-
-
-if __name__ == '__main__':
-    unittest.main()

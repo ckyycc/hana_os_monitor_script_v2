@@ -1,17 +1,15 @@
-import unittest
-from unittest.mock import MagicMock, call
-from unittest.mock import patch
+from unittest import TestCase
+from unittest.mock import MagicMock, call, patch
 
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
-from util import InfoType
 from util import KafKaUtility as Ku
-from util import Email
+from util import Email, InfoType
 
 from alarm_operator import AlarmOperator
 
 
-class TestAlarmOperator(unittest.TestCase):
+class TestAlarmOperator(TestCase):
     def setUp(self):
         self.server_id = 1
         self.check_id = "20191125010101001"
@@ -266,7 +264,7 @@ class TestAlarmOperator(unittest.TestCase):
 
     @staticmethod
     def __get_mock_msg_list(msg_list, assignment=0):
-        class infos:
+        class Infos:
             def __init__(self, msg_list, assignment_count):
                 self.infos = []
                 self.assignments = [1, 2] if assignment_count > 1 else []
@@ -282,7 +280,7 @@ class TestAlarmOperator(unittest.TestCase):
             def assignment(self):
                 return self.assignments
 
-        return infos(msg_list, assignment)
+        return Infos(msg_list, assignment)
 
     @staticmethod
     def __get_config_info():

@@ -1,6 +1,5 @@
-import unittest
-from unittest.mock import MagicMock, call
-from unittest.mock import patch
+from unittest import TestCase
+from unittest.mock import MagicMock, call, patch
 
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
@@ -8,7 +7,7 @@ from util import InfoType
 from analyzer import DataAnalyzer
 
 
-class TestAnalyzer(unittest.TestCase):
+class TestAnalyzer(TestCase):
     def setUp(self):
         self.server_id = 1
         self.check_id = "20191125010101001"
