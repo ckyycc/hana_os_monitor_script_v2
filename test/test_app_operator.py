@@ -6,7 +6,6 @@ from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
 
 from app_operator import AppOperator
-from kafka import KafkaConsumer
 import paramiko
 
 
@@ -29,7 +28,7 @@ class TestAppOperator(TestCase):
         operator._AppOperator__operate(mock_consumer)
         Mu.open_ssh_connection.assert_called_once_with(
             ANY, ANY, self.server_name, self.user_name, Mc.get_ssh_default_password())
-        mock_os_operator.return_value.shutdown_hana.assert_called_once()
+        mock_os_operator.shutdown_hana.assert_called_once()
 
     def test_cleaning(self):
         operator, mock_os_operator, mock_consumer = self.__get_mock_operator()
@@ -38,7 +37,7 @@ class TestAppOperator(TestCase):
         operator._AppOperator__operate(mock_consumer)
         Mu.open_ssh_connection.assert_called_once_with(
             ANY, ANY, self.server_name, self.user_name, Mc.get_ssh_default_password())
-        mock_os_operator.return_value.clean_log_backup.assert_called_once()
+        mock_os_operator.clean_log_backup.assert_called_once()
 
     def test_shutdown_and_cleaning(self):
         operator, mock_os_operator, mock_consumer = self.__get_mock_operator()
@@ -47,15 +46,14 @@ class TestAppOperator(TestCase):
         operator._AppOperator__operate(mock_consumer)
         ssh_call = call(ANY, ANY, self.server_name, self.user_name, Mc.get_ssh_default_password())
         Mu.open_ssh_connection.assert_has_calls([ssh_call, ssh_call])
-        mock_os_operator.return_value.shutdown_hana.assert_called_once()
-        mock_os_operator.return_value.clean_log_backup.assert_called_once()
+        mock_os_operator.shutdown_hana.assert_called_once()
+        mock_os_operator.clean_log_backup.assert_called_once()
 
-    @patch("test_app_operator.KafkaConsumer")
+    @patch("app_operator.KafkaConsumer")
     @patch("app_operator.LinuxOperator")
     def __get_mock_operator(self, mock_os_operator, mock_consumer):
         app_operator = AppOperator()
-        consumer = KafkaConsumer(group_id="TEST_GROUP", bootstrap_servers=["test_server", 9092])
-        return app_operator, mock_os_operator, mock_consumer
+        return app_operator, mock_os_operator.return_value, mock_consumer
 
     @staticmethod
     def __get_mock_msg_list(msg_list):
