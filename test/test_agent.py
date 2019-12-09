@@ -36,11 +36,9 @@ class TestAgent(TestCase):
 
         calls = [
             # heart beat
-            call(Mc.TOPIC_AGENT_HEARTBEAT,
-                 {Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_TYPE: InfoType.DISK.value, Mc.MSG_TIME: self.check_id}),
+            self.__get_heartbeat_call(InfoType.DISK.value),
             # header
-            call(Mc.TOPIC_MONITORING_INFO,
-                 {Mc.MSG_TYPE: InfoType.DISK.value, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_HEADER: True}),
+            self.__get_msg_head_call(InfoType.DISK.value),
             # total_free
             call(Mc.TOPIC_MONITORING_INFO,
                  {Mc.FIELD_CHECK_ID: self.check_id, Mc.FIELD_DISK_TOTAL: total,
@@ -58,8 +56,8 @@ class TestAgent(TestCase):
                  {Mc.FIELD_USER_NAME: "ck3adm", Mc.FIELD_FOLDER: "folder3", Mc.FIELD_DISK_USAGE_KB: 30000,
                   Mc.MSG_TYPE: InfoType.DISK.value, Mc.FIELD_SERVER_ID: self.server_id}),
             # ending
-            call(Mc.TOPIC_MONITORING_INFO,
-                 {Mc.MSG_TYPE: InfoType.DISK.value, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_ENDING: True})
+            self.__get_msg_ending_call(InfoType.DISK.value)
+
         ]
 
         mock_producer.return_value.send.assert_has_calls(calls, any_order=False)  # should be sequential
@@ -81,11 +79,9 @@ class TestAgent(TestCase):
 
         calls = [
             # heart beat
-            call(Mc.TOPIC_AGENT_HEARTBEAT,
-                 {Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_TYPE: InfoType.MEMORY.value, Mc.MSG_TIME: self.check_id}),
+            self.__get_heartbeat_call(InfoType.MEMORY.value),
             # header
-            call(Mc.TOPIC_MONITORING_INFO,
-                 {Mc.MSG_TYPE: InfoType.MEMORY.value, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_HEADER: True}),
+            self.__get_msg_head_call(InfoType.MEMORY.value),
             # total_free
             call(Mc.TOPIC_MONITORING_INFO,
                  {Mc.FIELD_CHECK_ID: self.check_id, Mc.FIELD_MEM_TOTAL: total,
@@ -103,8 +99,7 @@ class TestAgent(TestCase):
                  {Mc.FIELD_USER_NAME: "ck3adm", Mc.FIELD_PROCESS_COMMAND: "c3", Mc.FIELD_PROCESS_ID: 3001,
                   Mc.FIELD_MEM: 35, Mc.MSG_TYPE: InfoType.MEMORY.value, Mc.FIELD_SERVER_ID: self.server_id}),
             # ending
-            call(Mc.TOPIC_MONITORING_INFO,
-                 {Mc.MSG_TYPE: InfoType.MEMORY.value, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_ENDING: True})
+            self.__get_msg_ending_call(InfoType.MEMORY.value)
         ]
 
         mock_producer.return_value.send.assert_has_calls(calls, any_order=False)  # should be sequential
@@ -126,11 +121,9 @@ class TestAgent(TestCase):
 
         calls = [
             # heart beat
-            call(Mc.TOPIC_AGENT_HEARTBEAT,
-                 {Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_TYPE: InfoType.CPU.value, Mc.MSG_TIME: self.check_id}),
+            self.__get_heartbeat_call(InfoType.CPU.value),
             # header
-            call(Mc.TOPIC_MONITORING_INFO,
-                 {Mc.MSG_TYPE: InfoType.CPU.value, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_HEADER: True}),
+            self.__get_msg_head_call(InfoType.CPU.value),
             # total_free
             call(Mc.TOPIC_MONITORING_INFO,
                  {Mc.FIELD_CHECK_ID: self.check_id, Mc.FIELD_CPU_NUMBER: num, Mc.FIELD_CPU_UTILIZATION: usage,
@@ -148,8 +141,7 @@ class TestAgent(TestCase):
                  {Mc.FIELD_USER_NAME: "ck3adm", Mc.FIELD_PROCESS_COMMAND: "c7", Mc.FIELD_PROCESS_ID: 3002,
                   Mc.FIELD_CPU: 38, Mc.MSG_TYPE: InfoType.CPU.value, Mc.FIELD_SERVER_ID: self.server_id}),
             # ending
-            call(Mc.TOPIC_MONITORING_INFO,
-                 {Mc.MSG_TYPE: InfoType.CPU.value, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_ENDING: True})
+            self.__get_msg_ending_call(InfoType.CPU.value)
         ]
 
         mock_producer.return_value.send.assert_has_calls(calls, any_order=False)  # should be sequential
@@ -171,12 +163,9 @@ class TestAgent(TestCase):
 
         calls = [
             # heart beat
-            call(Mc.TOPIC_AGENT_HEARTBEAT,
-                 {Mc.FIELD_SERVER_ID: self.server_id,
-                  Mc.MSG_TYPE: InfoType.INSTANCE.value, Mc.MSG_TIME: self.check_id}),
+            self.__get_heartbeat_call(InfoType.INSTANCE.value),
             # header
-            call(Mc.TOPIC_MONITORING_INFO,
-                 {Mc.MSG_TYPE: InfoType.INSTANCE.value, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_HEADER: True}),
+            self.__get_msg_head_call(InfoType.INSTANCE.value),
             # overview
             call(Mc.TOPIC_MONITORING_INFO,
                  {Mc.FIELD_CHECK_ID: self.check_id, Mc.MSG_TYPE: InfoType.INSTANCE.value,
@@ -197,8 +186,19 @@ class TestAgent(TestCase):
                   Mc.FIELD_REVISION: '2.00.044.00', Mc.FIELD_EDITION: 'Database',
                   Mc.MSG_TYPE: InfoType.INSTANCE.value, Mc.FIELD_SERVER_ID: self.server_id}),
             # ending
-            call(Mc.TOPIC_MONITORING_INFO,
-                 {Mc.MSG_TYPE: InfoType.INSTANCE.value, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_ENDING: True})
+            self.__get_msg_ending_call(InfoType.INSTANCE.value)
         ]
 
         mock_producer.return_value.send.assert_has_calls(calls, any_order=False)  # should be sequential
+
+    def __get_heartbeat_call(self, info_type):
+        return call(Mc.TOPIC_AGENT_HEARTBEAT,
+                    {Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_TYPE: info_type, Mc.MSG_TIME: self.check_id})
+
+    def __get_msg_head_call(self, info_type):
+        return call(Mc.TOPIC_MONITORING_INFO,
+                    {Mc.MSG_TYPE: info_type, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_HEADER: True})
+
+    def __get_msg_ending_call(self, info_type):
+        return call(Mc.TOPIC_MONITORING_INFO,
+                    {Mc.MSG_TYPE: info_type, Mc.FIELD_SERVER_ID: self.server_id, Mc.MSG_ENDING: True})
