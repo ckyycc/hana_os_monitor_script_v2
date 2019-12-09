@@ -18,8 +18,9 @@ class TestConfigMonitor(TestCase):
             {Mc.FIELD_SERVER_ID: 1, Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_MOUNT_POINT: '/usr/sap',
              Mc.FIELD_OS: 'SUSE'},
             {Mc.FIELD_SERVER_ID: 2, Mc.FIELD_SERVER_FULL_NAME: 'test_server2', Mc.FIELD_MOUNT_POINT: '/usr/sap',
-                  Mc.FIELD_OS: 'SUSE'}
-             ]
+             Mc.FIELD_OS: 'SUSE'}
+        ]
+
         self.config_msg = {self.cpu_threshold: 1, self.mem_threshold: 2, self.disk_threshold: 3,
                            self.email_sender: "test@test", Mc.DB_CONFIGURATION_SERVER: self.config_server_list}
 
