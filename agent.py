@@ -65,30 +65,33 @@ class MemoryMonitor(Monitor):
         self.__interval = interval
 
     def monitoring(self, check_id):
-        server_id = self.__server_id
-        server_name = self._server_name
+        try:
+            server_id = self.__server_id
+            server_name = self._server_name
 
-        Mu.log_debug(self.__logger, "[{0}]Memory Monitoring begin...".format(check_id))
-        Mu.log_debug(self.__logger, "Trying to get memory overview of {0}".format(server_name))
+            Mu.log_debug(self.__logger, "[{0}]Memory Monitoring begin...".format(check_id))
+            Mu.log_debug(self.__logger, "Trying to get memory overview of {0}".format(server_name))
 
-        # collect memory info: total memory and free memory
-        mem_total, mem_free = self._os_operator.collect_mem_info(server_name)
-        Mu.log_debug(self.__logger,
-                     "Memory overview of {0} is (total:{1}, free:{2})".format(server_name, mem_total, mem_free))
+            # collect memory info: total memory and free memory
+            mem_total, mem_free = self._os_operator.collect_mem_info(server_name)
+            Mu.log_debug(self.__logger,
+                         "Memory overview of {0} is (total:{1}, free:{2})".format(server_name, mem_total, mem_free))
 
-        mem_info = self._os_operator.get_mem_consumers(server_name)
-        Mu.log_debug(self.__logger,
-                     "memory consuming information for {0}:{1}".format(server_name, mem_info))
+            mem_info = self._os_operator.get_mem_consumers(server_name)
+            Mu.log_debug(self.__logger,
+                         "memory consuming information for {0}:{1}".format(server_name, mem_info))
 
-        # insert overview to memory info
-        mem_info.insert(0, {Mc.FIELD_CHECK_ID: check_id,
-                            Mc.FIELD_MEM_TOTAL: mem_total,
-                            Mc.FIELD_MEM_FREE: mem_free})
+            # insert overview to memory info
+            mem_info.insert(0, {Mc.FIELD_CHECK_ID: check_id,
+                                Mc.FIELD_MEM_TOTAL: mem_total,
+                                Mc.FIELD_MEM_FREE: mem_free})
 
-        # send the info
-        self.accept(MonitorResourceDispatcher(mem_info, server_id))
+            # send the info
+            self.accept(MonitorResourceDispatcher(mem_info, server_id))
 
-        Mu.log_info(self.__logger, "Memory Monitoring is done for {0}.".format(server_name))
+            Mu.log_info(self.__logger, "Memory Monitoring is done for {0}.".format(server_name))
+        except Exception as ex:
+            Mu.log_warning_exc(self.__logger, "Error Occurred when performing Memory monitoring, ERROR: {0}".format(ex))
 
     def _get_interval(self):
         return self.__interval if self.__interval is not None else 60
@@ -104,28 +107,31 @@ class CPUMonitor(Monitor):
         self.__interval = interval
 
     def monitoring(self, check_id):
-        server_id = self.__server_id
-        server_name = self._server_name
+        try:
+            server_id = self.__server_id
+            server_name = self._server_name
 
-        Mu.log_debug(self.__logger, "[{0}]CPU Monitoring begin...".format(check_id))
-        Mu.log_debug(self.__logger, "Trying to get CPU overview of {0}".format(server_name))
-        # collect cpu info: cpu_num, cpu_usage
-        cpu_num, cpu_usage = self._os_operator.collect_cpu_info(server_name)
+            Mu.log_debug(self.__logger, "[{0}]CPU Monitoring begin...".format(check_id))
+            Mu.log_debug(self.__logger, "Trying to get CPU overview of {0}".format(server_name))
+            # collect cpu info: cpu_num, cpu_usage
+            cpu_num, cpu_usage = self._os_operator.collect_cpu_info(server_name)
 
-        Mu.log_debug(self.__logger,
-                     "CPU overview of {0} is (num:{1}, usage:{2})".format(server_name, cpu_num, cpu_usage))
+            Mu.log_debug(self.__logger,
+                         "CPU overview of {0} is (num:{1}, usage:{2})".format(server_name, cpu_num, cpu_usage))
 
-        cpu_info = self._os_operator.get_cpu_consumers(server_name)
-        Mu.log_debug(self.__logger, "CPU consuming information for {0}:{1}".format(server_name, cpu_info))
+            cpu_info = self._os_operator.get_cpu_consumers(server_name)
+            Mu.log_debug(self.__logger, "CPU consuming information for {0}:{1}".format(server_name, cpu_info))
 
-        # insert overview to cpu info
-        cpu_info.insert(0, {Mc.FIELD_CHECK_ID: check_id,
-                            Mc.FIELD_CPU_NUMBER: cpu_num,
-                            Mc.FIELD_CPU_UTILIZATION: cpu_usage})
+            # insert overview to cpu info
+            cpu_info.insert(0, {Mc.FIELD_CHECK_ID: check_id,
+                                Mc.FIELD_CPU_NUMBER: cpu_num,
+                                Mc.FIELD_CPU_UTILIZATION: cpu_usage})
 
-        self.accept(MonitorResourceDispatcher(cpu_info, server_id))
+            self.accept(MonitorResourceDispatcher(cpu_info, server_id))
 
-        Mu.log_info(self.__logger, "CPU Monitoring is done for {0}.".format(server_name))
+            Mu.log_info(self.__logger, "CPU Monitoring is done for {0}.".format(server_name))
+        except Exception as ex:
+            Mu.log_warning_exc(self.__logger, "Error Occurred when performing CPU monitoring, ERROR: {0}".format(ex))
 
     def _get_interval(self):
         return self.__interval if self.__interval is not None else 60
@@ -142,28 +148,31 @@ class DiskMonitor(Monitor):
         self.__interval = interval
 
     def monitoring(self, check_id):
-        server_id = self.__server_id
-        server_name = self._server_name
-        mount_point = self.__mount_point
+        try:
+            server_id = self.__server_id
+            server_name = self._server_name
+            mount_point = self.__mount_point
 
-        Mu.log_debug(self.__logger, "[{0}]Disk Monitoring begin...".format(check_id))
-        Mu.log_debug(self.__logger, "Trying to get disk overview of {0}".format(server_name))
-        # collect disk overview info: disk_total, disk_free
-        disk_total, disk_free = self._os_operator.collect_disk_info(server_name, mount_point)
-        Mu.log_debug(self.__logger,
-                     "Disk overview of {0} is (total:{1}, free:{2})".format(server_name, disk_total, disk_free))
+            Mu.log_debug(self.__logger, "[{0}]Disk Monitoring begin...".format(check_id))
+            Mu.log_debug(self.__logger, "Trying to get disk overview of {0}".format(server_name))
+            # collect disk overview info: disk_total, disk_free
+            disk_total, disk_free = self._os_operator.collect_disk_info(server_name, mount_point)
+            Mu.log_debug(self.__logger,
+                         "Disk overview of {0} is (total:{1}, free:{2})".format(server_name, disk_total, disk_free))
 
-        disk_info = self._os_operator.get_disk_consumers(server_name, mount_point)
+            disk_info = self._os_operator.get_disk_consumers(server_name, mount_point)
 
-        Mu.log_debug(self.__logger, "Disk consuming information for {0}:{1}".format(server_name, disk_info))
+            Mu.log_debug(self.__logger, "Disk consuming information for {0}:{1}".format(server_name, disk_info))
 
-        # insert overview to memory info
-        disk_info.insert(0, {Mc.FIELD_CHECK_ID: check_id,
-                             Mc.FIELD_DISK_TOTAL: disk_total,
-                             Mc.FIELD_DISK_FREE: disk_free})
+            # insert overview to memory info
+            disk_info.insert(0, {Mc.FIELD_CHECK_ID: check_id,
+                                 Mc.FIELD_DISK_TOTAL: disk_total,
+                                 Mc.FIELD_DISK_FREE: disk_free})
 
-        self.accept(MonitorResourceDispatcher(disk_info, server_id))
-        Mu.log_info(self.__logger, "Disk Monitoring is done for {0}.".format(server_name))
+            self.accept(MonitorResourceDispatcher(disk_info, server_id))
+            Mu.log_info(self.__logger, "Disk Monitoring is done for {0}.".format(server_name))
+        except Exception as ex:
+            Mu.log_warning_exc(self.__logger, "Error Occurred when performing Disk monitoring, ERROR: {0}".format(ex))
 
     def _get_interval(self):
         return self.__interval if self.__interval is not None else 3600
@@ -181,21 +190,24 @@ class InstanceInfoMonitor(Monitor):
         self.__interval = interval
 
     def monitoring(self, check_id):
-        server_id = self.__server_id
-        server_name = self._server_name
-        Mu.log_debug(self.__logger, "[{0}]Instance Monitoring begin...".format(check_id))
-        Mu.log_debug(self.__logger, "Trying to get instance info of {0}".format(server_name))
-        # collect instance info for one server by server id
-        instance_info = self._os_operator.get_all_hana_instance_info(server_id)
-        Mu.log_debug(self.__logger, "Instance information of {0} is {1}".format(server_name, instance_info))
+        try:
+            server_id = self.__server_id
+            server_name = self._server_name
+            Mu.log_debug(self.__logger, "[{0}]Instance Monitoring begin...".format(check_id))
+            Mu.log_debug(self.__logger, "Trying to get instance info of {0}".format(server_name))
+            # collect instance info for one server by server id
+            instance_info = self._os_operator.get_all_hana_instance_info(server_id)
+            Mu.log_debug(self.__logger, "Instance information of {0} is {1}".format(server_name, instance_info))
 
-        if instance_info:  # will skip sending instance info if it is empty
-            instance_info.insert(0, {Mc.FIELD_CHECK_ID: check_id})
-            self.accept(MonitorResourceDispatcher(instance_info, server_id))
-        else:
-            Mu.log_debug(self.__logger,
-                         "Instance information for {0} is empty, skipped sending this info.".format(server_name))
-        Mu.log_info(self.__logger, "Instance Monitoring is done for {0}.".format(server_name))
+            if instance_info:  # will skip sending instance info if it is empty
+                instance_info.insert(0, {Mc.FIELD_CHECK_ID: check_id})
+                self.accept(MonitorResourceDispatcher(instance_info, server_id))
+            else:
+                Mu.log_debug(self.__logger,
+                             "Instance information for {0} is empty, skipped sending this info.".format(server_name))
+            Mu.log_info(self.__logger, "Instance Monitoring is done for {0}.".format(server_name))
+        except Exception as ex:
+            Mu.log_warning_exc(self.__logger, "Error Occurred when monitoring Instance, ERROR: {0}".format(ex))
 
     def _get_interval(self):
         return self.__interval if self.__interval is not None else 3600

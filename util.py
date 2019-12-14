@@ -5,6 +5,7 @@ import configparser
 import rsa
 import binascii
 import os
+import traceback
 from errors import MonitorUtilError
 from datetime import datetime
 from enum import Enum
@@ -40,6 +41,7 @@ class MonitorConst:
     LOGGER_MONITOR_OPERATOR = "monitor.operator"
     LOGGER_MONITOR_OPERATOR_DB = "monitor.operator.db"
     LOGGER_MONITOR_OPERATOR_ALARM = "monitor.operator.alarm"
+    LOGGER_MONITOR_OPERATOR_APP = "monitor.operator.app"
 
     LOGGER_AGENT = "monitor.agent"
     LOGGER_AGENT_MSG_PRODUCER = "monitor.agent.producer"
@@ -139,6 +141,10 @@ class MonitorConst:
     DB_CONFIGURATION_SERVER = "SERVER"
 
     # ------ get values from configuration file ------
+    @staticmethod
+    def get_test_mode():
+        return MonitorConst.__config.get("monitor", "test_mode")
+
     @staticmethod
     def get_email_admin():
         return MonitorConst.__config.get("monitor", "email_administrators").split(",")
@@ -355,6 +361,11 @@ class MonitorUtility:
         return logging.getLogger(model_name)
 
     @staticmethod
+    def is_test_mod():
+        test_mode = MonitorConst.get_test_mode()
+        return test_mode.lower() in ['true', '1', 'yes'] if test_mode else False
+
+    @staticmethod
     def gen_sid_list(sid_start, sid_end):
         """Generate all the SIDs by the given sid_start and sid_end
          eg: sid_start = CK0, sid_end = CK3 generate the sid list that contains:[CK0, CK1, CK2, CK3]
@@ -521,7 +532,7 @@ class MonitorUtility:
     def open_ssh_connection(logger, operator, server_name, user_name, user_password):
         ssh = None
         try:
-            MonitorUtility.log_debug(logger, "Trying to connect {0}.".format(server_name))
+            MonitorUtility.log_debug(logger, "Trying to connect {0} with user {1}.".format(server_name, user_name))
             ssh = operator.open_ssh_connection(server_name, user_name, user_password)
             if ssh is not None:
                 MonitorUtility.log_debug(logger, "Connected {0}.".format(server_name))
@@ -623,14 +634,22 @@ class MonitorUtility:
             print(message)
 
     @staticmethod
-    def log_exception(logger, message):
+    def log_exception(logger, message=None):
         if logger is not None:
             try:
-                logger.exception(MonitorUtility.__get_log_message(message))
+                if message is None:
+                    logger.exception(traceback.format_exc())
+                else:
+                    logger.exception(MonitorUtility.__get_log_message(message))
             except Exception as ex:
                 print("Logging [exception] message '{0}' failed, error:{1}".format(message, ex))
         else:
             print(message)
+
+    @staticmethod
+    def log_warning_exc(logger, message):
+        MonitorUtility.log_warning(logger, message)
+        MonitorUtility.log_exception(logger)
 
 
 class Email:
@@ -817,24 +836,30 @@ class Email:
                 "\t Check Time: {5}".format(server_name, email_type.name, total, email_type.name, free, check_time))
 
         # top 5 consumers
-        body_additional = "\n Following is the top 5 {0} consumers, check id:{1}:\n ".format(email_type.name, check_id)
-        unit_type = "GB" if email_type == InfoType.DISK else "%"
-        for consumer in info[MonitorConst.INFO_USAGE]:
-            if email_type == InfoType.DISK:
-                consuming_info = "Folder: {0}".format(consumer[MonitorConst.FIELD_FOLDER])
-                usage = round(consumer[MonitorConst.FIELD_USAGE] / 1024 / 1024, 2)
-            else:
-                consuming_info = "SID: {0}".format(consumer[MonitorConst.FIELD_SID])
-                usage = round(consumer[MonitorConst.FIELD_USAGE], 2)
+        try:
+            body_additional = "\n Following is the top 5 {0} consumers, check id:{1}:\n ".format(email_type.name, check_id)
+            unit_type = "GB" if email_type == InfoType.DISK else "%"
+            for consumer in info[MonitorConst.INFO_USAGE]:
+                if email_type == InfoType.DISK:
+                    consuming_info = "Folder: {0}".format(consumer[MonitorConst.FIELD_FOLDER])
+                    usage = round(consumer[MonitorConst.FIELD_USAGE] / 1024 / 1024, 2)
+                else:
+                    consuming_info = "SID: {0}".format(consumer[MonitorConst.FIELD_SID])
+                    usage = round(consumer[MonitorConst.FIELD_USAGE], 2)
 
-            body_additional = "".join([body_additional, ("\t {0}, Name: {1}, {2} Usage: {3} {4}"
-                                                         "\n".format(consuming_info,
-                                                                     consumer[MonitorConst.FIELD_EMPLOYEE_NAME],
-                                                                     email_type.name,
-                                                                     usage,
-                                                                     unit_type))])
-        body = "".join([body, body_additional])
-        # Will add more inform like: "This is the {0} warning email, the HANA instance which
+                body_additional = "".join(
+                    [body_additional, "\t {0}, Name: {1}, {2} Usage: {3} {4}\n".format(
+                        consuming_info,
+                        consumer.get(MonitorConst.FIELD_EMPLOYEE_NAME, None),
+                        email_type.name,
+                        usage,
+                        unit_type)])
+            body = "".join([body, body_additional])
+        except Exception as ex:
+            Email.__logger.warning(
+                "Error occurred when generate email body for top 5 {0} consumers on {1}, error is {2}".format(
+                    email_type.name, server_name, ex))
+        # TODO: Will add more inform like: "This is the {0} warning email, the HANA instance which
         # consuming the most Memory will be shutdown after THREE warning email!!"
         return body
 

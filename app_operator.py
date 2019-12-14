@@ -14,11 +14,11 @@ class AppOperator(threading.Thread):
     """Context class for operation strategy"""
     def __init__(self):
         super().__init__()
-        self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR)
+        self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR_APP)
         # currently, only support shutdown and log backup clean
         self.switcher = {
-            ActionType.SHUTDOWN.value: AppOperator.__HANACloser(),
-            ActionType.CLEAN_LOG_BACKUP.value: AppOperator.__HANALogCleaner()
+            ActionType.SHUTDOWN.value: AppOperator.__HANACloser(self.__logger),
+            ActionType.CLEAN_LOG_BACKUP.value: AppOperator.__HANALogCleaner(self.__logger)
         }
         self.__app_operation_interval = 5  # TODO config in DB or ini ? or just hard code in util?
 
@@ -46,8 +46,10 @@ class AppOperator(threading.Thread):
                                 Mu.log_debug(self.__logger, "Action detail: {0}".format(info))
                                 self.switcher[action_type].operate(info)
                             except Exception as ex:
-                                Mu.log_warning(self.__logger,
-                                               "Perform action failed with {0}, action detail is {1}".format(ex, info))
+                                Mu.log_warning_exc(
+                                    self.__logger,
+                                    "Perform action failed with {0}, action detail is {1}".format(ex, info))
+
                             Mu.log_info(self.__logger, "Action: {0} is done.".format(action))
 
     def run(self):
@@ -59,18 +61,19 @@ class AppOperator(threading.Thread):
 
         # assign the topic and seek to end
         Ku.assign_and_seek_to_end(consumer, Mc.TOPIC_APP_OPERATION, Mc.TOPIC_APP_OPERATION)
-
+        Mu.log_info(self.__logger, "Start monitoring app queue...")
         while True:
             try:
                 self.__operate(consumer)
             except Exception as ex:
-                Mu.log_warning(self.__logger, "Error happened when performing the operation, err: {0}".format(ex))
+                Mu.log_warning_exc(self.__logger, "Error happened when performing the operation, err: {0}".format(ex))
+
             time.sleep(self.__app_operation_interval)
 
     class HANAOperator(ABC):
-        def __init__(self):
+        def __init__(self, logger):
             super().__init__()
-            self._logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR)
+            self._logger = logger
             self._os_operator = LinuxOperator()
 
         @abstractmethod
@@ -79,8 +82,8 @@ class AppOperator(threading.Thread):
             pass
 
     class __HANACloser(HANAOperator):
-        def __init__(self):
-            super().__init__()
+        def __init__(self, logger):
+            super().__init__(logger)
 
         def operate(self, parameter):
             server = parameter[Mc.FIELD_SERVER_FULL_NAME]
@@ -91,14 +94,15 @@ class AppOperator(threading.Thread):
                                         user,
                                         Mc.get_ssh_default_password()) as ssh:
                 if ssh is None:
-                    # notify alarm operator because of the non-standard password
-                    pass
+                    # TODO: notify alarm operator because of the non-standard password
+                    Mu.log_debug(self._logger, "Notifying alarm... user: {0}, server: {1}".format(user, server))
                 else:
+                    Mu.log_debug(self._logger, "Trying shutdown HANA on {0} for user {1}".format(server, user))
                     self._os_operator.shutdown_hana(ssh)
 
     class __HANALogCleaner(HANAOperator):
-        def __init__(self):
-            super().__init__()
+        def __init__(self, logger):
+            super().__init__(logger)
 
         def operate(self, parameter):
             server = parameter[Mc.FIELD_SERVER_FULL_NAME]
@@ -110,9 +114,10 @@ class AppOperator(threading.Thread):
                                         user,
                                         Mc.get_ssh_default_password()) as ssh:
                 if ssh is None:
-                    # notify alarm operator because of the non-standard password
-                    pass
+                    # TODO: notify alarm operator because of the non-standard password
+                    Mu.log_debug(self._logger, "Notifying alarm... user: {0}, server: {1}".format(user, server))
                 else:
+                    Mu.log_debug(self._logger, "Trying clean log backup on {0} for user {1}".format(server, user))
                     self._os_operator.clean_log_backup(ssh, sid)
 
 

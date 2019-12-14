@@ -187,10 +187,18 @@ class LinuxOperator:
         return self.__ssh_exec_command("cut -d: -f1 /etc/passwd | grep ^[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][a]dm$", ssh)
 
     def shutdown_hana(self, ssh):
+        if Mu.is_test_mod():
+            Mu.log_debug(self.__logger, "It's in test mode, skip shutting down hana.")
+            return
+
         cmd_output = self.__ssh_exec_command('nohup bash -lc "HDB stop" >/dev/null 2>&1 &', ssh)
         Mu.log_debug(self.__logger, "shutting down hana, output:{0}".format(cmd_output))
 
     def clean_log_backup(self, ssh, sid):
+        if Mu.is_test_mod():
+            Mu.log_debug(self.__logger, "It's in test mode, skip cleaning log backup for {0}.".format(sid))
+            return
+
         self.__ssh_exec_command(
             'find /usr/sap/{0}/HDB[0-9][0-9]/backup -name "log_backup_*.*" -mtime +10 -type f -delete'.format(sid), ssh)
         Mu.log_debug(self.__logger, "cleaned log backup for {0}.".format(sid))

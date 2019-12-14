@@ -36,36 +36,39 @@ class DataAnalyzer(Thread):
         # eg : { "memory" : { 1 : True, 8 : False} , "disk" : { 1 : True, 7 : False } }
         start_flag = {}
         for msg in consumer:
-            if msg and msg.value:
-                message = msg.value
-                server_id = message[Mc.FIELD_SERVER_ID]
-                info_analyzer = self.__get_info_analyzer(message)
-                if server_id is not None and info_analyzer is not None:
-                    Mu.log_debug(self.__logger, message)
-                    info_type = info_analyzer.type()
-                    if DataAnalyzer.__is_header(message):
-                        # init the value, if previous ending is lost, all the previous messages with
-                        # same type and server id will be abandoned
-                        if info_type not in start_flag:
-                            start_flag[info_type] = {}
-                        start_flag[info_type][server_id] = True
-                        # init the info for the specific type
-                        if info_type.value not in info:
-                            info[info_type.value] = {}
-                        info[info_type.value][server_id] = {Mc.MSG_TYPE: info_type.value, Mc.MSG_INFO: {}}
-                    elif start_flag.get(info_type, {}).get(server_id, False) and DataAnalyzer.__is_ending(message):
-                        # done, analyze the message and put filtered message to queue
-                        self.__producer.send(self.__topic, info[info_type.value][server_id])
-                        self.__producer.flush()
-                        Mu.log_debug(
-                            self.__logger, "Filtered message {0} was sent".format(info[info_type.value][server_id]))
+            try:
+                if msg and msg.value:
+                    message = msg.value
+                    server_id = message[Mc.FIELD_SERVER_ID]
+                    info_analyzer = self.__get_info_analyzer(message)
+                    if server_id is not None and info_analyzer is not None:
+                        Mu.log_debug(self.__logger, message)
+                        info_type = info_analyzer.type()
+                        if DataAnalyzer.__is_header(message):
+                            # init the value, if previous ending is lost, all the previous messages with
+                            # same type and server id will be abandoned
+                            if info_type not in start_flag:
+                                start_flag[info_type] = {}
+                            start_flag[info_type][server_id] = True
+                            # init the info for the specific type
+                            if info_type.value not in info:
+                                info[info_type.value] = {}
+                            info[info_type.value][server_id] = {Mc.MSG_TYPE: info_type.value, Mc.MSG_INFO: {}}
+                        elif start_flag.get(info_type, {}).get(server_id, False) and DataAnalyzer.__is_ending(message):
+                            # done, analyze the message and put filtered message to queue
+                            self.__producer.send(self.__topic, info[info_type.value][server_id])
+                            self.__producer.flush()
+                            Mu.log_debug(
+                                self.__logger, "Filtered message {0} was sent".format(info[info_type.value][server_id]))
 
-                        # reset the start flag and value
-                        start_flag[info_type][server_id] = False
-                        info[info_type.value][server_id] = {}
-                    elif start_flag.get(info_type, {}).get(server_id, False):
-                        # only process after get the header
-                        DataAnalyzer.__process(info_analyzer, message, info[info_type.value][server_id])
+                            # reset the start flag and value
+                            start_flag[info_type][server_id] = False
+                            info[info_type.value][server_id] = {}
+                        elif start_flag.get(info_type, {}).get(server_id, False):
+                            # only process after get the header
+                            DataAnalyzer.__process(info_analyzer, message, info[info_type.value][server_id])
+            except Exception as ex:
+                Mu.log_warning_exc(self.__logger, "Error occurred when analyzing message, Error: {0}".format(ex))
 
     @staticmethod
     def __is_header(info):

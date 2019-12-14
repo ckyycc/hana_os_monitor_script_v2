@@ -8,7 +8,6 @@ from util import MonitorConst as Mc
 from util import KafKaUtility as Ku
 from util import InfoType
 from kafka import KafkaConsumer
-from kafka.structs import TopicPartition
 
 
 class MonitorCoordinator(threading.Thread):
@@ -33,54 +32,57 @@ class MonitorCoordinator(threading.Thread):
         """
         Mu.log_debug(self.__logger, "Coordinator is listening on topic for configurations.")
         for msg in consumer:
-            Mu.log_debug(self.__logger, "New configs are coming...")
-            if self.__update_configs(msg.value):
-                # start/restart all agents, current design is restart all agents if any config is changed
-                servers = self.__configs.get(Mc.DB_CONFIGURATION_SERVER, [])
-                for server in servers:
-                    self.__restart_agent(server[Mc.FIELD_SERVER_FULL_NAME],
-                                         server[Mc.FIELD_SERVER_ID],
-                                         server[Mc.FIELD_MOUNT_POINT],
-                                         Mc.get_agent_path(),
-                                         self.__configs.get("CHECK_INTERVAL_MEM_INT", 60),
-                                         self.__configs.get("CHECK_INTERVAL_CPU_INT", 300),
-                                         self.__configs.get("CHECK_INTERVAL_DISK_INT", 3600),
-                                         self.__configs.get("CHECK_INTERVAL_INSTANCE_INT", 300))
+            try:
+                Mu.log_debug(self.__logger, "New configs are coming...")
+                if self.__update_configs(msg.value):
+                    # start/restart all agents, current design is restart all agents if any config is changed
+                    servers = self.__configs.get(Mc.DB_CONFIGURATION_SERVER, [])
+                    for server in servers:
+                        self.__restart_agent(server[Mc.FIELD_SERVER_FULL_NAME],
+                                             server[Mc.FIELD_SERVER_ID],
+                                             server[Mc.FIELD_MOUNT_POINT],
+                                             Mc.get_agent_path(),
+                                             self.__configs.get("CHECK_INTERVAL_MEM_INT", 60),
+                                             self.__configs.get("CHECK_INTERVAL_CPU_INT", 300),
+                                             self.__configs.get("CHECK_INTERVAL_DISK_INT", 3600),
+                                             self.__configs.get("CHECK_INTERVAL_INSTANCE_INT", 300))
 
-            if self.__check_configuration() and not self.__heartbeat_flag:
-                self.__heartbeat_flag = True
-                # start heart beat thread
-                heartbeat_thread = threading.Thread(target=self.__process_heartbeat)
-                heartbeat_thread.start()
+                if self.__check_configuration() and not self.__heartbeat_flag:
+                    self.__heartbeat_flag = True
+                    # start heart beat thread
+                    heartbeat_thread = threading.Thread(target=self.__process_heartbeat)
+                    heartbeat_thread.start()
+            except Exception as ex:
+                Mu.log_warning_exc(self.__logger, "Error occurred when coordinating the monitors, Err: {0}".format(ex))
 
     def __process_heartbeat(self):
-        try:
-            consumer = KafkaConsumer(
-                # Mc.TOPIC_AGENT_HEARTBEAT,  seek_to_end failed with no partition assigned, try manually assign
-                group_id=Mc.MONITOR_GROUP_ID,
-                bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-                value_deserializer=lambda m: json.loads(m.decode('ascii')))
-            # skip all previous messages, not care about past
-            # consumer.assign([TopicPartition(topic=Mc.TOPIC_AGENT_HEARTBEAT, partition=0)])
-            # use assign instead subscribe because the error: https://github.com/dpkp/kafka-python/issues/601
-            Ku.assign_and_seek_to_end(consumer, Mc.TOPIC_AGENT_HEARTBEAT, Mc.TOPIC_AGENT_HEARTBEAT)
-            # consumer.assign(Ku.get_assignments(consumer, [Mc.TOPIC_AGENT_HEARTBEAT]))
-            # consumer.seek_to_end(*Ku.get_topic_partitions(consumer, Mc.TOPIC_AGENT_HEARTBEAT))
-            # consumer.seek_to_end()
+        consumer = KafkaConsumer(
+            # Mc.TOPIC_AGENT_HEARTBEAT,  seek_to_end failed with no partition assigned, try manually assign
+            group_id=Mc.MONITOR_GROUP_ID,
+            bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
+            value_deserializer=lambda m: json.loads(m.decode('ascii')))
+        # skip all previous messages, not care about past
+        # consumer.assign([TopicPartition(topic=Mc.TOPIC_AGENT_HEARTBEAT, partition=0)])
+        # use assign instead subscribe because the error: https://github.com/dpkp/kafka-python/issues/601
+        Ku.assign_and_seek_to_end(consumer, Mc.TOPIC_AGENT_HEARTBEAT, Mc.TOPIC_AGENT_HEARTBEAT)
+        # consumer.assign(Ku.get_assignments(consumer, [Mc.TOPIC_AGENT_HEARTBEAT]))
+        # consumer.seek_to_end(*Ku.get_topic_partitions(consumer, Mc.TOPIC_AGENT_HEARTBEAT))
+        # consumer.seek_to_end()
 
-            # init heartbeat_info for all servers
-            heartbeat_info = {s[Mc.FIELD_SERVER_ID]: {
-                InfoType.MEMORY.value: datetime.now()} for s in self.__configs.get(Mc.DB_CONFIGURATION_SERVER, [])}
+        # init heartbeat_info for all servers
+        heartbeat_info = {s[Mc.FIELD_SERVER_ID]: {
+            InfoType.MEMORY.value: datetime.now()} for s in self.__configs.get(Mc.DB_CONFIGURATION_SERVER, [])}
 
-            while True:
+        while True:
+            try:
                 Mu.process_heartbeat(self.__logger,
                                      heartbeat_info,
                                      consumer,
                                      self.__heartbeat_timeout,
                                      self.__restart_agent_via_server_id)
-                time.sleep(self.__heartbeat_interval)
-        except Exception as ex:
-            Mu.log_error(self.__logger, "Error occurred when checking heartbeat, error: {0}".format(ex))
+            except Exception as ex:
+                Mu.log_warning_exc(self.__logger, "Error occurred when checking heartbeat, error: {0}".format(ex))
+            time.sleep(self.__heartbeat_interval)
 
     def __restart_agent_via_server_id(self, server_id):
         pre_time = self.__heartbeat_agent_restart_info.get(server_id, datetime.min)

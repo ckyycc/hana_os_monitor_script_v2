@@ -17,17 +17,24 @@ class Monitor:
         Start the whole monitor system. Actually all the parts of the monitor system can be run via python file alone
         """
         # start config monitor
+        print("Starting ConfigMonitor")
         ConfigMonitor().start()
         # start coordinator
+        print("Starting Coordinator")
         MonitorCoordinator().start()
         # start analyzer
+        print("Starting DataAnalyzer")
         DataAnalyzer().start()
         # start db operator
+        print("Starting DBOperator")
         DBOperator().start()
         # start alarm operator
+        print("Starting AlarmOperator")
         AlarmOperator().start()
         # start application operator
+        print("Starting AppOperator")
         AppOperator().start()
+        print("Done.")
 
 
 if __name__ == '__main__':

@@ -68,7 +68,7 @@ class HANAOperatorService:
     def __update_server_info(self, check_id, server_id, **kwargs):
         disk_total = kwargs.get("disk_total", None)
         disk_free = kwargs.get("disk_free", None)
-        mem_total = kwargs.get("mem_free", None)
+        mem_total = kwargs.get("mem_total", None)
         mem_free = kwargs.get("mem_free", None)
         cpu_usage = kwargs.get("cpu_usage", None)
         server_info = {Mc.FIELD_DISK_TOTAL: disk_total,

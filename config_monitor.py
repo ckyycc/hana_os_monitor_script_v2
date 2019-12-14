@@ -74,7 +74,10 @@ class ConfigMonitor(threading.Thread):
         """run the thread"""
         operator = HANAMonitorDAO(Mc.get_hana_server(), Mc.get_hana_port(), Mc.get_hana_user(), Mc.get_hana_password())
         while True:
-            self.__monitoring_configurations(operator)
+            try:
+                self.__monitoring_configurations(operator)
+            except Exception as ex:
+                Mu.log_warning_exc(self.__logger, "Error occurred when monitoring configuration, Error: {0}".format(ex))
 
             time.sleep(self.__configs.get("CHECK_INTERVAL_CONFIG_INT", 300))
 
