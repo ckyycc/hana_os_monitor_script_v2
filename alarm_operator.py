@@ -1,5 +1,3 @@
-from kafka import KafkaConsumer
-from kafka import KafkaProducer
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
 from util import KafKaUtility as Ku
@@ -10,7 +8,6 @@ from datetime import datetime
 from operation.db_operations import HANAMonitorDAO
 import time
 import threading
-import json
 
 
 class AlarmOperator(threading.Thread):
@@ -20,9 +17,9 @@ class AlarmOperator(threading.Thread):
 
         self.__db_operator = AlarmOperator.__HANAOperatorService()
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR_ALARM)
-        self.__heartbeat_interval = 5  # TODO config
-        self.__heartbeat_timeout = 120  # TODO config
-        self.__heartbeat_email_interval = 240  # TODO config
+        self.__heartbeat_interval = Mc.get_heartbeat_check_interval()
+        self.__heartbeat_timeout = Mc.get_heartbeat_timeout()
+        self.__heartbeat_email_interval = Mc.get_heartbeat_operation_interval()
         self.cpu_threshold = 0
         self.mem_threshold = 0
         self.disk_threshold = 0
@@ -30,12 +27,10 @@ class AlarmOperator(threading.Thread):
         self.operation_time = ""
         self.max_failure_times = 3
         self.mem_emergency_threshold = 0
-        self.check_interval = 0
+        self.check_interval = 0  # the interval for sending email / performing emergency shutdown
         self.servers = []
 
-        self.__producer = KafkaProducer(
-            bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-            value_serializer=lambda v: json.dumps(v).encode("ascii"))
+        self.__producer = Ku.get_producer()
         self.__topic = Mc.TOPIC_APP_OPERATION
         self.__heartbeat_email_info = {}
 
@@ -60,7 +55,8 @@ class AlarmOperator(threading.Thread):
                     # if configuration is ready, update subscription
                     if self.__check_configuration() and len(consumer.assignment()) < 2:
                         # start heartbeat checking
-                        # use assign instead subscribe because the error: https://github.com/dpkp/kafka-python/issues/601
+                        # use assign instead subscribe because the error:
+                        # https://github.com/dpkp/kafka-python/issues/601
                         Ku.assign_and_seek_to_end(
                             consumer, Mc.TOPIC_FILTERED_INFO, *[Mc.TOPIC_FILTERED_INFO, Mc.TOPIC_CONFIGURATION])
 
@@ -82,8 +78,8 @@ class AlarmOperator(threading.Thread):
                             if float(mem_free) / mem_total * 100 <= self.mem_emergency_threshold:
                                 cur_time = datetime.now()
                                 pre_time = emergency_alarm.get(server_id, cur_time)
-                                if cur_time != pre_time and (cur_time - pre_time).total_seconds() < self.check_interval:  # TODO add config
-                                    # only perform emergency shutdown every hour
+                                if cur_time != pre_time and (cur_time - pre_time).total_seconds() < self.check_interval:
+                                    # only perform emergency shutdown every configured interval
                                     continue
                                 emergency_alarm[server_id] = cur_time
 
@@ -91,9 +87,10 @@ class AlarmOperator(threading.Thread):
                                     email, employee_name, user_name, sid, mem_usage = \
                                         AlarmOperator.__get_highest_consumption_info(top5_consumers[Mc.INFO_USAGE])
                                 except Exception as ex:
-                                    Mu.log_warning(self.__logger,
-                                                   "Call __get_highest_consumption_info for {0} failed with exception {1}."
-                                                   .format(top5_consumers[Mc.INFO_USAGE], ex))
+                                    Mu.log_warning(
+                                        self.__logger,
+                                        "Call __get_highest_consumption_info for {0} failed with exception {1}."
+                                            .format(top5_consumers[Mc.INFO_USAGE], ex))
                                     continue
 
                                 # trigger the emergency shutdown
@@ -105,7 +102,8 @@ class AlarmOperator(threading.Thread):
                                             "({3}%) memory.".format(sid, server_name, user_name, mem_usage))
                                 # sending email to the owner of the instance
                                 Email.send_emergency_shutdown_email(
-                                    self.email_sender, email, sid, server_name, employee_name, admin, mem_usage, InfoType.MEMORY
+                                    self.email_sender, email, sid, server_name,
+                                    employee_name, admin, mem_usage, InfoType.MEMORY
                                 )
 
                                 self.__send_shutdown_message(server_name, sid, user_name)
@@ -163,8 +161,8 @@ class AlarmOperator(threading.Thread):
                         if email_flag == 2:
 
                             try:
-                                email, employee_name, user_name, sid, usage = \
-                                    AlarmOperator.__get_highest_consumption_info(top5_consumers[Mc.INFO_USAGE], msg_type)
+                                email, employee_name, user_name, sid, usage = AlarmOperator\
+                                    .__get_highest_consumption_info(top5_consumers[Mc.INFO_USAGE], msg_type)
                                 admin = self.__db_operator.get_email_admin(server_id)
                             except Exception as ex:
                                 Mu.log_warning(self.__logger,
@@ -178,7 +176,8 @@ class AlarmOperator(threading.Thread):
                                             "is running out of memory and {2} is consuming highest "
                                             "({3}%) memory.".format(sid, server_name, user_name, usage))
                                 Email.send_shutdown_email(
-                                    self.email_sender, email, sid, server_name, employee_name, admin, usage, InfoType.MEMORY
+                                    self.email_sender, email, sid, server_name,
+                                    employee_name, admin, usage, InfoType.MEMORY
                                 )
                                 # trigger the shutdown --> send shutdown message
                                 self.__send_shutdown_message(server_name, sid, user_name)
@@ -189,7 +188,8 @@ class AlarmOperator(threading.Thread):
                                             "is running out of Disk and {2} is consuming highest "
                                             "({3}%) disk space.".format(sid, server_name, user_name, usage))
                                 Email.send_cleaning_disk_email(
-                                    self.email_sender, email, sid, server_name, employee_name, admin, usage, InfoType.DISK
+                                    self.email_sender, email, sid, server_name,
+                                    employee_name, admin, usage, InfoType.DISK
                                 )
 
                                 # trigger the shutdown --> send shutdown message
@@ -254,11 +254,9 @@ class AlarmOperator(threading.Thread):
             self.servers = msg[Mc.DB_CONFIGURATION_SERVER]
 
     def __process_heartbeat(self):
-        heartbeat_consumer = KafkaConsumer(
-                    # Mc.TOPIC_AGENT_HEARTBEAT,  seek_to_end failed with no partition assigned, try manually assign
-                    group_id=Mc.MONITOR_GROUP_ID_ALARM_HEARTBEAT,
-                    bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-                    value_deserializer=lambda m: json.loads(m.decode('ascii')))
+        # Mc.TOPIC_AGENT_HEARTBEAT,  seek_to_end failed with no partition assigned, try manually assign
+        heartbeat_consumer = Ku.get_consumer(Mc.MONITOR_GROUP_ID_ALARM_HEARTBEAT)
+
         # skip all previous messages, not care about past
         # use assign instead subscribe because the error: https://github.com/dpkp/kafka-python/issues/601
         # consumer.assign([TopicPartition(topic=Mc.TOPIC_AGENT_HEARTBEAT, partition=0)])
@@ -448,7 +446,7 @@ class AlarmOperator(threading.Thread):
         return {action: {Mc.FIELD_SERVER_FULL_NAME: server_name, Mc.FIELD_SID: sid, Mc.FIELD_USER_NAME: user_name}}
 
     @staticmethod
-    def __get_highest_consumption_info(top5_consumers, msg_type):
+    def __get_highest_consumption_info(top5_consumers, msg_type=InfoType.MEMORY.value):
         usage = -1
         highest_consumer = {}
         for consumer in top5_consumers:
@@ -466,20 +464,13 @@ class AlarmOperator(threading.Thread):
         else:
             sid = highest_consumer.get(Mc.FIELD_SID, None)
 
-        if sid is None:  # TODO just testing for the None sid issue of ls9303, remove it later
-            __logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR_ALARM)
-            Mu.log_info(__logger, top5_consumers)
         mem_usage = highest_consumer[Mc.FIELD_USAGE]
         return email, employee_name, user_name, sid, mem_usage
 
     def run(self):
         """run the thread"""
         while True:
-            consumer = KafkaConsumer(
-                group_id=Mc.MONITOR_GROUP_ID_ALARM,  # should be in different group with others
-                bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-                value_deserializer=lambda m: json.loads(m.decode('ascii')))
-
+            consumer = Ku.get_consumer(Mc.MONITOR_GROUP_ID_ALARM)  # should be in different group with others
             consumer.assign(Ku.get_assignments(consumer, Mc.TOPIC_CONFIGURATION))
             # consumer.subscribe(Mc.TOPIC_CONFIGURATION)
             self.__operate(consumer)

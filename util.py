@@ -6,11 +6,14 @@ import rsa
 import binascii
 import os
 import traceback
+import json
 from errors import MonitorUtilError
 from datetime import datetime
 from enum import Enum
-from kafka.structs import TopicPartition
 from contextlib import contextmanager
+from kafka import KafkaProducer
+from kafka import KafkaConsumer
+from kafka.structs import TopicPartition
 
 
 class InfoType(Enum):
@@ -30,7 +33,6 @@ class ActionType(Enum):
 
 
 class MonitorConst:
-
     # ------Get configuration------
     __config = configparser.ConfigParser()
     __config.read(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config/configuration.ini"))
@@ -56,6 +58,7 @@ class MonitorConst:
     LOGGER_MONITOR_TEST = "monitor.test"
     LOGGER_MONITOR_UTILITY = "monitor.utility"
     LOGGER_MONITOR_EMAIL = "monitor.email"
+    LOGGER_MONITOR_KAFKA = "monitor.kafka"
     LOGGER_MONITOR_INIT_SERVER = "monitor.init.server"
     LOGGER_MONITOR_INIT_SID = "monitor.init.sid"
     LOGGER_MONITOR_INIT_TABLE = "monitor.init.table"
@@ -121,8 +124,15 @@ class MonitorConst:
     TOPIC_FILTERED_INFO = "monitoring_filtered_data"
     TOPIC_APP_OPERATION = "app_operation"
     MONITOR_GROUP_ID = "monitor_group"
+    MONITOR_GROUP_ID_AGENT = "monitor_group_alarm"
     MONITOR_GROUP_ID_ALARM = "monitor_group_alarm"
     MONITOR_GROUP_ID_ALARM_HEARTBEAT = "monitor_group_alarm_heartbeat"
+    MONITOR_GROUP_ID_ANALYZER = "monitor_group_analyzer"
+    MONITOR_GROUP_ID_APP_OPERATOR = "monitor_group_app_operator"
+    MONITOR_GROUP_ID_CONFIG = "monitor_group_config"
+    MONITOR_GROUP_ID_COORDINATOR = "monitor_group_coordinator"
+    MONITOR_GROUP_ID_DB_OPERATOR = "monitor_group_db_operator"
+
     MSG_TYPE = "type"
     MSG_INFO = "info"
     MSG_HEADER = "header"
@@ -229,6 +239,22 @@ class MonitorConst:
     @staticmethod
     def get_email_password():
         return MonitorConst.__config.get("monitor.alarm", "email_password")
+
+    @staticmethod
+    def get_heartbeat_check_interval():
+        return int(MonitorConst.__config.get("monitor.heartbeat", "check_interval"))
+
+    @staticmethod
+    def get_heartbeat_timeout():
+        return int(MonitorConst.__config.get("monitor.heartbeat", "timeout_s"))
+
+    @staticmethod
+    def get_heartbeat_operation_interval():
+        return int(MonitorConst.__config.get("monitor.heartbeat", "operation_interval"))
+
+    @staticmethod
+    def get_app_operation_check_interval():
+        return int(MonitorConst.__config.get("monitor.app.operation", "check_interval"))
 
     @staticmethod
     def __get_db_configuration_not_real_time(name, component, db_operator, logger=None):
@@ -511,13 +537,11 @@ class MonitorUtility:
 
     @staticmethod
     def get_decrypt_string(private_key_path, string_to_decrypt):
-        # use <sid>adm, does not need this
-        return "trextrex"
-        # byte_to_decrypt = binascii.a2b_base64(string_to_decrypt)
-        # with open(private_key_path, mode='rb') as private_file:
-        #     key_data = private_file.read()
-        #     private_data = rsa.PrivateKey.load_pkcs1(key_data)
-        #     return rsa.decrypt(byte_to_decrypt, private_data).decode("utf-8")
+        byte_to_decrypt = binascii.a2b_base64(string_to_decrypt)
+        with open(private_key_path, mode='rb') as private_file:
+            key_data = private_file.read()
+            private_data = rsa.PrivateKey.load_pkcs1(key_data)
+            return rsa.decrypt(byte_to_decrypt, private_data).decode("utf-8")
 
     @staticmethod
     def generate_check_id():
@@ -649,6 +673,11 @@ class MonitorUtility:
     @staticmethod
     def log_warning_exc(logger, message):
         MonitorUtility.log_warning(logger, message)
+        MonitorUtility.log_exception(logger)
+
+    @staticmethod
+    def log_error_exc(logger, message):
+        MonitorUtility.log_error(logger, message)
         MonitorUtility.log_exception(logger)
 
 
@@ -830,14 +859,15 @@ class Email:
                 "\t CPU Utilization: {1} % \n"
                 "\t Check Time: {2}".format(server_name, total, check_time)) \
             if email_type == InfoType.CPU else (
-                "Server Name:{0}\n"
-                "\t Total {1}: {2} GB\n"
-                "\t Free {3}: {4} GB\n"
-                "\t Check Time: {5}".format(server_name, email_type.name, total, email_type.name, free, check_time))
+            "Server Name:{0}\n"
+            "\t Total {1}: {2} GB\n"
+            "\t Free {3}: {4} GB\n"
+            "\t Check Time: {5}".format(server_name, email_type.name, total, email_type.name, free, check_time))
 
         # top 5 consumers
         try:
-            body_additional = "\n Following is the top 5 {0} consumers, check id:{1}:\n ".format(email_type.name, check_id)
+            body_additional = "\n Following is the top 5 {0} consumers, check id:{1}:\n ".format(email_type.name,
+                                                                                                 check_id)
             unit_type = "GB" if email_type == InfoType.DISK else "%"
             for consumer in info[MonitorConst.INFO_USAGE]:
                 if email_type == InfoType.DISK:
@@ -865,6 +895,8 @@ class Email:
 
 
 class KafKaUtility:
+    __logger = logging.getLogger(MonitorConst.LOGGER_MONITOR_KAFKA)
+
     @staticmethod
     def get_assignments(consumer, *topics):
         assignments = []
@@ -884,3 +916,37 @@ class KafKaUtility:
     def assign_and_seek_to_end(consumer, topic_to_seek, *topics):
         consumer.assign(KafKaUtility.get_assignments(consumer, *topics))
         consumer.seek_to_end(*KafKaUtility.get_topic_partitions(consumer, topic_to_seek))
+
+    @staticmethod
+    def get_producer():
+        try:
+            producer = KafkaProducer(
+                bootstrap_servers=["{0}:{1}".format(MonitorConst.get_kafka_server(), MonitorConst.get_kafka_port())],
+                value_serializer=lambda v: json.dumps(v).encode('ascii'))
+            return producer
+        except Exception as ex:
+            err_msg = "Get producer failed with error: {0}".format(ex)
+            MonitorUtility.log_error_exc(KafKaUtility.__logger, err_msg)
+            raise MonitorUtilError(err_msg)
+
+    @staticmethod
+    def get_consumer(group_id, topic=None):
+        try:
+            if topic is not None:
+                consumer = KafkaConsumer(
+                    topic,
+                    group_id=group_id,
+                    bootstrap_servers=[
+                        "{0}:{1}".format(MonitorConst.get_kafka_server(), MonitorConst.get_kafka_port())],
+                    value_deserializer=lambda m: json.loads(m.decode('ascii')))
+            else:
+                consumer = KafkaConsumer(
+                    group_id=group_id,
+                    bootstrap_servers=[
+                        "{0}:{1}".format(MonitorConst.get_kafka_server(), MonitorConst.get_kafka_port())],
+                    value_deserializer=lambda m: json.loads(m.decode('ascii')))
+            return consumer
+        except Exception as ex:
+            err_msg = "Get consumer failed with error: {0}".format(ex)
+            MonitorUtility.log_error_exc(KafKaUtility.__logger, err_msg)
+            raise MonitorUtilError(err_msg)

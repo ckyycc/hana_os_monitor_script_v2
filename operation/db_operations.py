@@ -56,41 +56,10 @@ class HANAMonitorDAO:
                 cursor.close()
             Mu.log_debug(self.__logger, "Cursor closed.")
 
-    def get_sid_mappings(self):
-        query = "SELECT SID_START, SID_END,EMPLOYEE_ID FROM HANA_OS_MONITOR.SID_MAPPING_CFG "
-        # "WHERE LOCATION_ID = {0}".format(location_id))
-        return self.__query_select(query)
-
     def get_server_full_names(self, location_id=None):
         query = ("SELECT SERVER_ID, SERVER_FULL_NAME, MOUNT_POINT, OS FROM HANA_OS_MONITOR.SERVER_INFO "
                  "WHERE LOCATION_ID = {0} ORDER BY SERVER_ID".format(location_id)) if location_id else \
             "SELECT SERVER_ID, SERVER_FULL_NAME, MOUNT_POINT, OS FROM HANA_OS_MONITOR.SERVER_INFO ORDER BY SERVER_ID"
-        return self.__query_select(query)
-
-    def get_current_process_status(self, location_id):
-        query = ("SELECT TOP 1 STATUS FROM HANA_OS_MONITOR.M_MONITOR_CATALOG "
-                 "WHERE STAGE = -1 AND LOCATION_ID = {0} ORDER BY CHECK_ID DESC".format(location_id))
-        return self.__query_select(query)
-
-    def get_current_servers_info(self, location_id):
-        query = ("SELECT SERVER_ID, SERVER_FULL_NAME, DISK_TOTAL, DISK_FREE, MEM_TOTAL, MEM_FREE, "
-                 "CPU_UTILIZATION, OS, CHECK_TIME, CHECK_ID FROM HANA_OS_MONITOR.M_CURRENT_SERVERS_INFO "
-                 "WHERE LOCATION_ID ={0};".format(location_id))
-        return self.__query_select(query)
-
-    def get_top5_memory_consumers(self, server_id):
-        query = ("SELECT SERVER_FULL_NAME, USER_NAME, EMPLOYEE_NAME, EMAIL, USAGE, "
-                 "CHECK_ID, RANK FROM HANA_OS_MONITOR.M_TOP5_MEM_CONSUMERS WHERE SERVER_ID={0}".format(server_id))
-        return self.__query_select(query)
-
-    def get_top5_disk_consumers(self, server_id):
-        query = ("SELECT SERVER_FULL_NAME, FOLDER, EMPLOYEE_NAME, EMAIL, USAGE, "
-                 "CHECK_ID, RANK FROM HANA_OS_MONITOR.M_TOP5_DISK_CONSUMERS WHERE SERVER_ID={0}".format(server_id))
-        return self.__query_select(query)
-
-    def get_top5_cpu_consumers(self, server_id):
-        query = ("SELECT SERVER_FULL_NAME, USER_NAME, EMPLOYEE_NAME, EMAIL, USAGE, "
-                 "CHECK_ID, RANK FROM HANA_OS_MONITOR.M_TOP5_CPU_CONSUMERS WHERE SERVER_ID={0}".format(server_id))
         return self.__query_select(query)
 
     def get_info_by_5_sidadm_users(self, server_id, users):
@@ -112,58 +81,6 @@ class HANAMonitorDAO:
                  "LEFT JOIN HANA_OS_MONITOR.EMPLOYEE_INFO B ON A.EMPLOYEE_ID = B.EMPLOYEE_ID "
                  "WHERE C.SERVER_ID = {1} ".format(user_list, server_id))
 
-        return self.__query_select(query)
-
-    def get_last3_servers_info(self, server_id, threshold=None, op_type=None):
-        """Get the last 3 server info by server id and threshold,
-        if either threshold or op_type is None, only server id will be applied
-        op_type can be MEM, CPU or Disk"""
-        query = ("SELECT SERVER_FULL_NAME, DISK_TOTAL, DISK_FREE, MEM_TOTAL, MEM_FREE, CPU_UTILIZATION, "
-                 "CHECK_ID FROM HANA_OS_MONITOR.M_LAST3_SERVERS_INFO WHERE SERVER_ID={0}".format(server_id))
-        if threshold is not None and op_type is not None:
-            if op_type == Mc.SERVER_INFO_MEM:
-                query = "".join([query, " AND MEM_FREE < {0}".format(threshold)])
-            elif op_type == Mc.SERVER_INFO_CPU:
-                query = "".join([query, " AND CPU_UTILIZATION > {0}".format(threshold)])
-            elif op_type == Mc.SERVER_INFO_DISK:
-                query = "".join([query, " AND DISK_FREE < {0}".format(threshold)])
-
-        return self.__query_select(query)
-
-    def get_flag_of_sid(self, sid, server_id):
-        query = "SELECT FILTER_FLAG FROM HANA_OS_MONITOR.SID_INFO WHERE SERVER_ID={0} AND SID='{1}'".format(server_id,
-                                                                                                            sid)
-        return self.__query_select(query)
-
-    def get_failed_servers(self, check_id, location_id):
-        """get the server which failed for all the 3 stages by location_id"""
-        # query = ("SELECT B.SERVER_FULL_NAME FROM HANA_OS_MONITOR.M_MONITOR_CATALOG A "
-        #          "INNER JOIN HANA_OS_MONITOR.SERVER_INFO B ON A.SERVER_ID = B.SERVER_ID "
-        #          "WHERE A.STATUS = 'ERROR' AND A.CHECK_ID = '{0}' AND A.LOCATION_ID = {1} "
-        #          "GROUP BY B.SERVER_FULL_NAME HAVING COUNT(1) >= 3".format(check_id, location_id))
-        # commented on 2018/09/05 now only send the failing alert email at the first time after 8am of current day
-        working_hour = Mc.get_operation_hours(self.__logger)[0]
-        working_time = "0{0}".format(working_hour) if working_hour < 10 else "{0}".format(working_hour)
-        query = ("SELECT SERVER_FULL_NAME FROM ( SELECT B.SERVER_FULL_NAME, A.SERVER_ID, A.CHECK_ID, COUNT(1) "
-                 "AS FAILED_NUM FROM HANA_OS_MONITOR.M_MONITOR_CATALOG A "
-                 "INNER JOIN HANA_OS_MONITOR.SERVER_INFO B ON A.SERVER_ID = B.SERVER_ID "
-                 "WHERE A.END_TIME >= TO_TIMESTAMP(TO_NVARCHAR(CURRENT_TIMESTAMP, 'YYYY-MM-DD') "
-                 "|| ' {0}:00:00', 'YYYY-MM-DD HH24:MI:SS') "
-                 "AND A.STATUS = 'ERROR' AND A.CHECK_ID <= '{1}' AND A.LOCATION_ID = {2} "
-                 "GROUP BY B.SERVER_FULL_NAME, A.SERVER_ID, A.CHECK_ID HAVING COUNT(1) >= 3 ) C "
-                 "WHERE NOT EXISTS (SELECT 1 FROM HANA_OS_MONITOR.M_MONITOR_CATALOG D "
-                 "WHERE D.CHECK_ID > C.CHECK_ID AND D.STATUS <> 'ERROR' AND D.SERVER_ID = C.SERVER_ID)"
-                 "GROUP BY SERVER_FULL_NAME "
-                 "HAVING SUM(FAILED_NUM) >= 3 AND SUM(FAILED_NUM) <6".format(working_time, check_id, location_id))
-
-        return self.__query_select(query)
-
-    def get_sudo_pwd_flag(self, server_id):
-        query = "SELECT SUDO_PWD_FLAG FROM HANA_OS_MONITOR.SERVER_INFO WHERE SERVER_ID = {0}".format(server_id)
-        return self.__query_select(query)
-
-    def get_locations(self):
-        query = "SELECT LOCATION_ID, LOCATION FROM HANA_OS_MONITOR.LOCATION_INFO"
         return self.__query_select(query)
 
     def get_email_admin(self, server_id):
@@ -225,47 +142,6 @@ class HANAMonitorDAO:
                  "WHERE SERVER_ID={0}""".format(server_id))
         self.__query_update(query, server_info)
 
-    def update_monitor_catalog_overall_status(self, check_id, location_id):
-        """Set the overall status for monitor_catalog,
-        for one check_id, if status of sub steps (no WARNING status for sub steps) contains:
-         1. 'COMPLETE' mix 'ERROR' --> 'WARNING'
-         2. 'COMPLETE' --> 'WARNING'
-         3. 'ERROR' --> 'ERROR'"""
-        query = ("UPDATE HANA_OS_MONITOR.M_MONITOR_CATALOG SET END_TIME = CURRENT_TIMESTAMP, STATUS = "
-                 "(SELECT 'WARNING' AS STATUS FROM DUMMY WHERE 'ERROR' IN "
-                 "(SELECT STATUS FROM HANA_OS_MONITOR.M_MONITOR_CATALOG WHERE CHECK_ID = '{0}' AND LOCATION_ID = {1} "
-                 "GROUP BY STATUS) AND 'COMPLETE' IN "
-                 "(SELECT STATUS FROM HANA_OS_MONITOR.M_MONITOR_CATALOG WHERE CHECK_ID = '{0}' AND LOCATION_ID = {1} "
-                 "GROUP BY STATUS) "
-                 "UNION "
-                 "SELECT 'ERROR' AS STATUS FROM DUMMY WHERE 'ERROR' IN "
-                 "(SELECT STATUS FROM HANA_OS_MONITOR.M_MONITOR_CATALOG WHERE CHECK_ID = '{0}' AND LOCATION_ID = {1} "
-                 "GROUP BY STATUS) AND EXISTS (SELECT COUNT(1) FROM ("
-                 "SELECT STATUS FROM HANA_OS_MONITOR.M_MONITOR_CATALOG WHERE CHECK_ID = '{0}' AND LOCATION_ID = {1} "
-                 "AND STAGE <> -1 GROUP BY STATUS) HAVING COUNT(1) = 1) "
-                 "UNION "
-                 "SELECT 'COMPLETE' AS STATUS FROM DUMMY WHERE 'COMPLETE' IN "
-                 "(SELECT STATUS FROM HANA_OS_MONITOR.M_MONITOR_CATALOG WHERE CHECK_ID = '{0}' AND LOCATION_ID = {1} "
-                 "GROUP BY STATUS) AND EXISTS (SELECT COUNT(1) FROM ("
-                 "SELECT STATUS FROM HANA_OS_MONITOR.M_MONITOR_CATALOG WHERE CHECK_ID = '{0}' AND LOCATION_ID = {1} "
-                 "AND STAGE <> -1 GROUP BY STATUS) HAVING COUNT(1) = 1)) "
-                 "WHERE CHECK_ID = '{0}' AND LOCATION_ID = {1} AND STAGE = -1".format(check_id, location_id))
-        self.__query_update(query)
-
-    def update_monitor_catalog(self, check_id, server_id, stage, status, location_id, message):
-        if status == Mc.MONITOR_STATUS_COMPLETE or \
-                status == Mc.MONITOR_STATUS_ERROR or status == Mc.MONITOR_STATUS_WARNING:
-            query = ("UPSERT HANA_OS_MONITOR.M_MONITOR_CATALOG "
-                     "(CHECK_ID, SERVER_ID, LOCATION_ID, END_TIME, STATUS, STAGE, MESSAGE) "
-                     "VALUES (?,?,?,CURRENT_TIMESTAMP,?,?,?) WITH PRIMARY KEY")
-        else:
-            query = ("UPSERT HANA_OS_MONITOR.M_MONITOR_CATALOG "
-                     "(CHECK_ID, SERVER_ID, LOCATION_ID, END_TIME, STATUS, STAGE, MESSAGE) "
-                     "VALUES (?,?,?,NULL,?,?,?) WITH PRIMARY KEY")
-
-        param_list = [(check_id, server_id, location_id, status, stage, message)]
-        self.__query_insert_batch(query, param_list)
-
     def update_server_monitoring_info(self, check_id, server_id, server_info):
         query = ("UPSERT HANA_OS_MONITOR.M_SERVER_INFO "
                  "(CHECK_ID,SERVER_ID,DISK_TOTAL,DISK_FREE,MEM_TOTAL,MEM_FREE,CPU_UTILIZATION) "
@@ -302,10 +178,6 @@ class HANAMonitorDAO:
                       for r in instance_info.values()]
 
         self.__query_insert_batch(query, param_list)
-
-    def insert_sid_info(self, sid_list):
-        query = "INSERT INTO HANA_OS_MONITOR.SID_INFO (SERVER_ID, SID, SID_USER, EMPLOYEE_ID) VALUES (?,?,?,?)"
-        self.__query_insert_batch(query, sid_list)
 
     def execute_from_script(self, sql_file):
         with open(sql_file, 'r') as sqL_file_handler:

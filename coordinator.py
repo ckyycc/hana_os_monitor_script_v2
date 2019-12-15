@@ -1,4 +1,3 @@
-import json
 import threading
 import time
 from datetime import datetime
@@ -7,7 +6,6 @@ from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
 from util import KafKaUtility as Ku
 from util import InfoType
-from kafka import KafkaConsumer
 
 
 class MonitorCoordinator(threading.Thread):
@@ -20,9 +18,9 @@ class MonitorCoordinator(threading.Thread):
         self.__configs = {}
         self.__os_operator = LinuxOperator()
         self.__heartbeat_flag = False
-        self.__heartbeat_interval = 5  # TODO config
-        self.__heartbeat_timeout = 120  # TODO config
-        self.__heartbeat_restart_agent_interval = 240  # TODO config
+        self.__heartbeat_interval = Mc.get_heartbeat_check_interval()
+        self.__heartbeat_timeout = Mc.get_heartbeat_timeout()
+        self.__heartbeat_restart_agent_interval = Mc.get_heartbeat_operation_interval()
         self.__heartbeat_agent_restart_info = {}
 
     def __coordinating_monitors(self, consumer):
@@ -56,11 +54,8 @@ class MonitorCoordinator(threading.Thread):
                 Mu.log_warning_exc(self.__logger, "Error occurred when coordinating the monitors, Err: {0}".format(ex))
 
     def __process_heartbeat(self):
-        consumer = KafkaConsumer(
-            # Mc.TOPIC_AGENT_HEARTBEAT,  seek_to_end failed with no partition assigned, try manually assign
-            group_id=Mc.MONITOR_GROUP_ID,
-            bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-            value_deserializer=lambda m: json.loads(m.decode('ascii')))
+        # Mc.TOPIC_AGENT_HEARTBEAT,  seek_to_end failed with no partition assigned, try manually assign
+        consumer = Ku.get_consumer(Mc.MONITOR_GROUP_ID_COORDINATOR)
         # skip all previous messages, not care about past
         # consumer.assign([TopicPartition(topic=Mc.TOPIC_AGENT_HEARTBEAT, partition=0)])
         # use assign instead subscribe because the error: https://github.com/dpkp/kafka-python/issues/601
@@ -114,7 +109,7 @@ class MonitorCoordinator(threading.Thread):
                                     self.__os_operator,
                                     server,
                                     Mc.get_ssh_default_user(),
-                                    Mu.get_decrypt_string(Mc.get_rsa_key_file(), Mc.get_ssh_default_password())) as ssh:
+                                    Mc.get_ssh_default_password()) as ssh:
             Mu.log_debug(self.__logger, "Restarting {0}".format(server))
             self.__os_operator.restart_agent(
                 ssh, server_id, mount_point, agent_path, mem_interval, cpu_interval, disk_interval, instance_interval)
@@ -149,10 +144,7 @@ class MonitorCoordinator(threading.Thread):
     def run(self):
         """run the thread"""
         while True:
-            consumer = KafkaConsumer(Mc.TOPIC_CONFIGURATION,
-                                     group_id=Mc.MONITOR_GROUP_ID,
-                                     bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-                                     value_deserializer=lambda m: json.loads(m.decode('ascii')))
+            consumer = Ku.get_consumer(Mc.MONITOR_GROUP_ID_COORDINATOR, Mc.TOPIC_CONFIGURATION)
             self.__coordinating_monitors(consumer)
             Mu.log_warning(self.__logger, "Topic is empty or connection is lost. Trying to reconnect...")
 

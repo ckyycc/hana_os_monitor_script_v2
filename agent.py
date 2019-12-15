@@ -1,13 +1,12 @@
 import getopt
-import json
 import sys
 import os
 import signal
 import getpass
 import subprocess
-from kafka import KafkaProducer
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
+from util import KafKaUtility as Ku
 from util import InfoType
 from errors import MonitorDBOpError
 from errors import MonitorOSOpError
@@ -561,6 +560,8 @@ class HANAServerOSOperatorService:
 
                             i += 1
                         hana_info.append(info)
+                    else:  # fixed the endless loop when the output is not valid
+                        i += 1
 
             except Exception as ex:
                 hana_info = []
@@ -595,9 +596,7 @@ class MsgProducerService:
             raise MonitorDBOpError("This class is a singleton, use HANAServerDBOperatorService.instance() instead")
         else:
             MsgProducerService.__instance = self
-            self.__producer = KafkaProducer(
-                bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-                value_serializer=lambda v: json.dumps(v).encode("ascii"))
+            self.__producer = Ku.get_producer()
             self.__logger = Mu.get_logger(Mc.LOGGER_AGENT_MSG_PRODUCER)
             self.__topic = Mc.TOPIC_MONITORING_INFO
             self.__topic_heartbeat = Mc.TOPIC_AGENT_HEARTBEAT

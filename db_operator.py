@@ -1,12 +1,10 @@
-import json
 import threading
-import datetime
 
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
+from util import KafKaUtility as Ku
 from util import InfoType
 
-from kafka import KafkaConsumer
 from errors import MonitorDBOpError
 from operation.db_operations import HANAMonitorDAO
 
@@ -31,10 +29,7 @@ class DBOperator(threading.Thread):
     def run(self):
         """run the thread"""
         while True:
-            consumer = KafkaConsumer(Mc.TOPIC_FILTERED_INFO,
-                                     group_id=Mc.MONITOR_GROUP_ID,
-                                     bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-                                     value_deserializer=lambda m: json.loads(m.decode('ascii')))
+            consumer = Ku.get_consumer(Mc.MONITOR_GROUP_ID_DB_OPERATOR, Mc.TOPIC_FILTERED_INFO)
             self.__operate(consumer)
             Mu.log_warning(self.__logger, "Topic is empty or connection is lost. Trying to reconnect...")
 

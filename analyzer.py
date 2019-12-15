@@ -1,9 +1,7 @@
-import json
 from threading import Thread
 from util import MonitorUtility as Mu
 from util import MonitorConst as Mc
-from kafka import KafkaConsumer
-from kafka import KafkaProducer
+from util import KafKaUtility as Ku
 from util import InfoType
 from abc import ABC, abstractmethod
 
@@ -15,9 +13,7 @@ class DataAnalyzer(Thread):
     def __init__(self):
         super().__init__()
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_ANALYZER)
-        self.__producer = KafkaProducer(
-            bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-            value_serializer=lambda v: json.dumps(v).encode('ascii'))
+        self.__producer = Ku.get_producer()
         self.__topic = Mc.TOPIC_FILTERED_INFO
         self.__mem_info_analyzer = DataAnalyzer.__MemoryInfoAnalyzer()
         self.__cpu_info_analyzer = DataAnalyzer.__CPUInfoAnalyzer()
@@ -96,10 +92,7 @@ class DataAnalyzer(Thread):
     def run(self):
         """run the thread"""
         while True:
-            consumer = KafkaConsumer(Mc.TOPIC_MONITORING_INFO,
-                                     group_id=Mc.MONITOR_GROUP_ID,
-                                     bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-                                     value_deserializer=lambda m: json.loads(m.decode('ascii')))
+            consumer = Ku.get_consumer(Mc.MONITOR_GROUP_ID_ANALYZER, Mc.TOPIC_MONITORING_INFO)
             self.__analyze(consumer)
             Mu.log_warning(self.__logger, "Topic is empty or connection is lost. Trying to reconnect...")
 

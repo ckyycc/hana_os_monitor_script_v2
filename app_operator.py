@@ -1,4 +1,3 @@
-from kafka import KafkaConsumer
 from util import ActionType
 from util import MonitorConst as Mc
 from util import MonitorUtility as Mu
@@ -7,7 +6,6 @@ from abc import ABC, abstractmethod
 from operation.os_operations import LinuxOperator
 import time
 import threading
-import json
 
 
 class AppOperator(threading.Thread):
@@ -20,7 +18,7 @@ class AppOperator(threading.Thread):
             ActionType.SHUTDOWN.value: AppOperator.__HANACloser(self.__logger),
             ActionType.CLEAN_LOG_BACKUP.value: AppOperator.__HANALogCleaner(self.__logger)
         }
-        self.__app_operation_interval = 5  # TODO config in DB or ini ? or just hard code in util?
+        self.__app_operation_interval = Mc.get_app_operation_check_interval()
 
     def __operate(self, consumer):
         """ poll from consumer, performing the related operation"""
@@ -54,10 +52,7 @@ class AppOperator(threading.Thread):
 
     def run(self):
         """run the thread"""
-        consumer = KafkaConsumer(  # Mc.TOPIC_APP_OPERATION,
-            group_id=Mc.MONITOR_GROUP_ID,
-            bootstrap_servers=["{0}:{1}".format(Mc.get_kafka_server(), Mc.get_kafka_port())],
-            value_deserializer=lambda m: json.loads(m.decode('ascii')))
+        consumer = Ku.get_consumer(Mc.MONITOR_GROUP_ID_APP_OPERATOR)
 
         # assign the topic and seek to end
         Ku.assign_and_seek_to_end(consumer, Mc.TOPIC_APP_OPERATION, Mc.TOPIC_APP_OPERATION)
@@ -94,8 +89,8 @@ class AppOperator(threading.Thread):
                                         user,
                                         Mc.get_ssh_default_password()) as ssh:
                 if ssh is None:
-                    # TODO: notify alarm operator because of the non-standard password
-                    Mu.log_debug(self._logger, "Notifying alarm... user: {0}, server: {1}".format(user, server))
+                    # TODO: notify alarm operator because of the non-standard password ??
+                    Mu.log_warning(self._logger, "Failed to log in {0} with user {1}".format(server, user))
                 else:
                     Mu.log_debug(self._logger, "Trying shutdown HANA on {0} for user {1}".format(server, user))
                     self._os_operator.shutdown_hana(ssh)
@@ -114,8 +109,8 @@ class AppOperator(threading.Thread):
                                         user,
                                         Mc.get_ssh_default_password()) as ssh:
                 if ssh is None:
-                    # TODO: notify alarm operator because of the non-standard password
-                    Mu.log_debug(self._logger, "Notifying alarm... user: {0}, server: {1}".format(user, server))
+                    # TODO: notify alarm operator because of the non-standard password ??
+                    Mu.log_warning(self._logger, "Failed to log in {0} with user {1}".format(server, user))
                 else:
                     Mu.log_debug(self._logger, "Trying clean log backup on {0} for user {1}".format(server, user))
                     self._os_operator.clean_log_backup(ssh, sid)
