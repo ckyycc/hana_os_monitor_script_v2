@@ -290,7 +290,11 @@ class AlarmOperator(threading.Thread):
             for server in servers:
                 Mu.log_info(self.__logger,
                             "Sending heartbeat failure message for {0}.".format(server[Mc.FIELD_SERVER_FULL_NAME]))
-                Email.send_heartbeat_failure_email(self.email_sender, server[Mc.FIELD_SERVER_FULL_NAME], admin)
+                # If it's not working time, skip sending email
+                if not Mu.is_current_time_working_time(self.operation_time):
+                    Mu.log_info(self.__logger, "Skip alarm operations because of the non-working time.")
+                else:
+                    Email.send_heartbeat_failure_email(self.email_sender, server[Mc.FIELD_SERVER_FULL_NAME], admin)
             # update the email sending time
             self.__heartbeat_email_info[server_id] = cur_time
         else:
@@ -347,6 +351,7 @@ class AlarmOperator(threading.Thread):
                 # {"user1": 12.2, "user2": 13.2}
                 user_info[Mc.FIELD_USAGE] = info[Mc.MSG_INFO][user_info[Mc.FIELD_USER_NAME]]  # set the usage
 
+            top_5_consumers.get(Mc.INFO_USAGE, []).sort(key=lambda v: v[Mc.FIELD_USAGE], reverse=True)
             return top_5_consumers
 
     def __operate_cpu(self, info):
@@ -375,6 +380,7 @@ class AlarmOperator(threading.Thread):
                 # set the usage {"user1": 12.2, "user2": 13.2}
                 user_info[Mc.FIELD_USAGE] = info[Mc.MSG_INFO][user_info[Mc.FIELD_USER_NAME]] / float(cpu_num)
 
+            top_5_consumers.get(Mc.INFO_USAGE, []).sort(key=lambda v: v[Mc.FIELD_USAGE], reverse=True)
             return top_5_consumers
 
     def __operate_disk(self, info):
