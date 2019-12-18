@@ -472,15 +472,14 @@ class HANAServerOSOperatorService:
 
     def get_disk_consumers(self, server_name, mount_point):
         """ Get the disk consuming information for mount_point (default value is /usr/sap)"""
-        # exclude mount_point/tmp: --exclude=/usr/sap/tmp. It's for the hanging issue of llbpal97,
-        # modified at 2018/07/22
-        # exclude mount_point/shared: --exclude=/usr/sap/shared. It's for the hanging issue of vanpghana06 and 07
-        # modified at 2018/07/26
-        # exclude mount_point/temp. It's for hanging issue of llbpal96
-        # modified at 2019/07/05
         os_output = HANAServerOSOperatorService.__exec(
-            "du --exclude={0}/tmp --exclude={0}/temp --exclude={0}/shared --exclude=/usr/sap/eua_paths "
-            "--max-depth=1 {0} 2>>/dev/null".format(mount_point))
+            # exclude some folder because of hang issue of NFS
+            # "du --exclude={0}/tmp --exclude={0}/temp --exclude={0}/shared --exclude=/usr/sap/eua_paths "
+            # "--max-depth=1 {0} 2>>/dev/null".format(mount_point))
+            # changed to below solution at 2019/12/17, below solution only count the size of /usr/sap/SID
+            # it's much more accurate
+            "find {0} -maxdepth 1 -type d |  egrep '^{0}/[A-Z][A-Z0-9][A-Z0-9]$' | "
+            "xargs du -L --max-depth=0 2>>/dev/null".format(mount_point))
 
         os_output_owners = []
         if os_output is None:
