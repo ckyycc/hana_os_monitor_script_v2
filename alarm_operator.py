@@ -19,7 +19,7 @@ class AlarmOperator(threading.Thread):
         self.__logger = Mu.get_logger(Mc.LOGGER_MONITOR_OPERATOR_ALARM)
         self.__heartbeat_interval = Mc.get_heartbeat_check_interval()
         self.__heartbeat_timeout = Mc.get_heartbeat_timeout()
-        self.__heartbeat_email_interval = Mc.get_heartbeat_operation_interval()
+        self.__heartbeat_email_interval = Mc.get_heartbeat_email_interval()
         self.cpu_threshold = 0
         self.mem_threshold = 0
         self.disk_threshold = 0
@@ -75,7 +75,7 @@ class AlarmOperator(threading.Thread):
                             mem_free = top5_consumers[Mc.INFO_FREE]
                             mem_total = top5_consumers[Mc.INFO_TOTAL]
                             # calculate emergency status
-                            if float(mem_free) / mem_total * 100 <= self.mem_emergency_threshold:
+                            if float(mem_free) / mem_total * 100 <= 100 - self.mem_emergency_threshold:
                                 cur_time = datetime.now()
                                 pre_time = emergency_alarm.get(server_id, cur_time)
                                 if cur_time != pre_time and (cur_time - pre_time).total_seconds() < self.check_interval:
