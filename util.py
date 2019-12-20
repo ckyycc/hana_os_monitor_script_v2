@@ -253,6 +253,10 @@ class MonitorConst:
         return int(MonitorConst.__config.get("monitor.heartbeat", "operation_interval"))
 
     @staticmethod
+    def get_heartbeat_email_interval():
+        return int(MonitorConst.__config.get("monitor.heartbeat", "email_interval"))
+
+    @staticmethod
     def get_app_operation_check_interval():
         return int(MonitorConst.__config.get("monitor.app.operation", "check_interval"))
 
@@ -684,26 +688,31 @@ class MonitorUtility:
 class Email:
     """class for sending email"""
     __logger = logging.getLogger(MonitorConst.LOGGER_MONITOR_EMAIL)
+    @staticmethod
+    def __get_email_body_for_shutdown(name, server, sid, usage, emergency=False):
+        emergency_str = 'EMERGENCY ' if emergency else ''
+        email_body = ("Dear {0}, \n\n{1} is running out of memory, the [{4}SHUTDOWN] of your {2} is "
+                      "because of its consuming highest memory ({3}%). "
+                      "If this SID is very important and you do not want "
+                      "it to be shut down next time, please contact administrator"
+                      " to mark it as an important SID. \n"
+                      "\n\nRegards,\nHANA OS Monitor".format(name, server, sid, round(usage, 2), emergency_str))
+        return email_body
 
     @staticmethod
     def send_emergency_shutdown_email(sender, receiver, sid, server_name, employee_name, admin, usage, info_type):
         if receiver is not None and len(receiver) > 0:
             # sending email to the owner of the instance
             email_to = [receiver]
-            email_body = ("Dear {0}, \n\n{1} is running out of memory, the [EMERGENCY SHUTDOWN] of your {2} is "
-                          "because of its consuming highest memory ({3}%). "
-                          "If this SID is very important and you do not want "
-                          "it to be shut down next time, please contact administrator"
-                          " to mark it as an important SID. \n"
-                          "\n\nRegards,\nHANA OS Monitor".format(employee_name, server_name, sid, usage))
+            email_body = Email.__get_email_body_for_shutdown(employee_name, server_name, sid, usage, True)
             Email.send_email(
                 sender,
                 email_to,
-                "[MONITOR.{0}] {1} on {2} is Shutting Down".format(info_type.name, sid, server_name),
+                "[MONITOR.{0}][EMERGENCY] {1} on {2} is Shutting Down".format(info_type.name, sid, server_name),
                 email_body,
                 admin)
         else:
-            Email.__logger.warning("No email is sent out, because of the empty email receiver.")
+            Email.__logger.warning("No emergency shutdown email is sent out, because of the empty email receiver.")
 
     @staticmethod
     def send_shutdown_email(sender, receiver, sid, server_name, employee_name, admin, usage, info_type):
@@ -711,12 +720,8 @@ class Email:
         if receiver is not None and len(receiver) > 0:
             # sending email to the owner of the instance
             email_to = [receiver]
-            email_body = ("Dear {0}, \n\n{1} is running out of memory, the [SHUTDOWN] of your {2} is "
-                          "because of its consuming highest memory ({3}%). "
-                          "If this SID is very important and you do not want "
-                          "it to be shut down next time, please contact administrator"
-                          " to mark it as an important SID. \n."
-                          "\n\nRegards,\nHANA OS Monitor".format(employee_name, server_name, sid, usage))
+            email_body = Email.__get_email_body_for_shutdown(employee_name, server_name, sid, usage, False)
+
             Email.send_email(
                 sender,
                 email_to,
@@ -724,7 +729,7 @@ class Email:
                 email_body,
                 admin)
         else:
-            Email.__logger.warning("No email is sent out, because of the empty email receiver.")
+            Email.__logger.warning("No shutdown email is sent out, because of the empty email receiver.")
 
     @staticmethod
     def send_cleaning_disk_email(sender, receiver, sid, server_name, employee_name, admin, usage, info_type):
