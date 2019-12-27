@@ -66,7 +66,7 @@ class TestConfigMonitor(TestCase):
         mock_producer.send.assert_called_with(Mc.TOPIC_CONFIGURATION, config_msg)
 
     @patch("config_monitor.HANAMonitorDAO")
-    @patch("config_monitor.KafkaProducer")
+    @patch("util.KafkaProducer")
     def __get_mock_objects(self, mock_producer, mock_dao):
         config_monitor = ConfigMonitor()
         return config_monitor, mock_dao.return_value, mock_producer.return_value

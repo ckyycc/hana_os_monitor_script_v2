@@ -18,7 +18,7 @@ class TestAgent(TestCase):
         # remove singleton status, otherwise other test cases will be failed as they are share the same class
         MsgProducerService._MsgProducerService__instance = None
 
-    @patch("agent.KafkaProducer")
+    @patch("util.KafkaProducer")
     def test_disk_monitor(self, mock_producer):
         monitor = DiskMonitor(self.server_id, '/usr/sap', 3600)
 
@@ -62,7 +62,7 @@ class TestAgent(TestCase):
 
         mock_producer.return_value.send.assert_has_calls(calls, any_order=False)  # should be sequential
 
-    @patch("agent.KafkaProducer")
+    @patch("util.KafkaProducer")
     def test_mem_monitor(self, mock_producer):
         monitor = MemoryMonitor(self.server_id, 15)
         total, free = 1000000000, 2500000
@@ -104,7 +104,7 @@ class TestAgent(TestCase):
 
         mock_producer.return_value.send.assert_has_calls(calls, any_order=False)  # should be sequential
 
-    @patch("agent.KafkaProducer")
+    @patch("util.KafkaProducer")
     def test_cpu_monitor(self, mock_producer):
         monitor = CPUMonitor(self.server_id, 15)
         num, usage = 512, 78
@@ -146,7 +146,7 @@ class TestAgent(TestCase):
 
         mock_producer.return_value.send.assert_has_calls(calls, any_order=False)  # should be sequential
 
-    @patch("agent.KafkaProducer")
+    @patch("util.KafkaProducer")
     def test_instance_monitor(self, mock_producer):
         monitor = InstanceInfoMonitor(self.server_id, 15)
 

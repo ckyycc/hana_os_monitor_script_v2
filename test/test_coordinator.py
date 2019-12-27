@@ -122,7 +122,7 @@ class TestMonitorCoordinator(TestCase):
         self.assertEqual(mock_os_operator.restart_agent.call_count, 2)
         self.assertEqual(Mu.open_ssh_connection.call_count, 2)
 
-    @patch("coordinator.KafkaConsumer")
+    @patch("util.KafkaConsumer")
     @patch("coordinator.LinuxOperator")
     def __get_mock_objects(self, mock_os_operator, mock_consumer):
         coordinator = MonitorCoordinator()

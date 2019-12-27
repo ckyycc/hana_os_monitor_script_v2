@@ -84,7 +84,7 @@ class TestAlarmOperator(TestCase):
 
     def test_emergency_alert_should_skip_filtered_sid(self):
         operator = self.__get_mock_operator()
-        operator.mem_emergency_threshold = 5
+        operator.mem_emergency_threshold = 90
         operator.mem_threshold = 95
         infos = TestAlarmOperator.__get_mock_msg_list(self.mem_msg_list)
         self.user_info[2][Mc.FIELD_FILTER_FLAG] = 'X'
@@ -96,18 +96,18 @@ class TestAlarmOperator(TestCase):
 
     def test_memory_high_usage_alert(self):
         operator = self.__get_mock_operator()
-        operator.mem_emergency_threshold = 0
+        operator.mem_emergency_threshold = 100  # disable emergency
         operator.mem_threshold = 80
         infos = TestAlarmOperator.__get_mock_msg_list(self.mem_msg_list)
 
         operator._AlarmOperator__operate(infos)
         Email.send_warning_email.assert_called_once_with(
-            "", ['employ1@test.com', 'employ2@test.com', 'employ3@test.com'], InfoType.MEMORY,
+            "", ['employ3@test.com', 'employ2@test.com', 'employ1@test.com'], InfoType.MEMORY,
             'test_server1', self.__get_mem_email_call_usage_info(), 'test@test.com')
 
     def test_memory_high_usage_shutdown_after_3_fails(self):
         operator = self.__get_mock_operator()
-        operator.mem_emergency_threshold = 0
+        operator.mem_emergency_threshold = 100  # disable emergency
         operator.mem_threshold = 80
         operator.check_interval = 0
         mem_list = self.mem_msg_list + self.mem_msg_list + self.mem_msg_list + self.mem_msg_list
@@ -115,7 +115,7 @@ class TestAlarmOperator(TestCase):
 
         operator._AlarmOperator__operate(infos)
         warning_email_call = call(
-            "", ['employ1@test.com', 'employ2@test.com', 'employ3@test.com'], InfoType.MEMORY,
+            "", ['employ3@test.com', 'employ2@test.com', 'employ1@test.com'], InfoType.MEMORY,
             'test_server1', self.__get_mem_email_call_usage_info(), 'test@test.com')
         calls = [warning_email_call, warning_email_call, warning_email_call, warning_email_call]
         # should send 4 times warning email
@@ -128,7 +128,7 @@ class TestAlarmOperator(TestCase):
     def test_memory_high_usage_shutdown_after_3_fails_should_skip_filtered_sid(self):
         self.user_info[2][Mc.FIELD_FILTER_FLAG] = 'X'
         operator = self.__get_mock_operator()
-        operator.mem_emergency_threshold = 0
+        operator.mem_emergency_threshold = 100  # disable emergency
         operator.mem_threshold = 80
         operator.check_interval = 0
 
@@ -137,7 +137,7 @@ class TestAlarmOperator(TestCase):
 
         operator._AlarmOperator__operate(infos)
         warning_email_call = call(
-            "", ['employ1@test.com', 'employ2@test.com', 'employ3@test.com'], InfoType.MEMORY,
+            "", ['employ3@test.com', 'employ2@test.com', 'employ1@test.com'], InfoType.MEMORY,
             'test_server1', self.__get_mem_email_call_usage_info(True), 'test@test.com')
         calls = [warning_email_call, warning_email_call, warning_email_call, warning_email_call]
         # should send 4 times warning email
@@ -170,7 +170,7 @@ class TestAlarmOperator(TestCase):
 
         calls = [warning_email_call, warning_email_call, warning_email_call, warning_email_call]
         Email.send_warning_email.assert_has_calls(calls)
-        operator._AlarmOperator__send_cleaning_message.assert_called_once_with("test_server1", "CK3", "ck3adm")
+        operator._AlarmOperator__send_cleaning_message.assert_called_once_with("test_server1", "folder3", "ck3adm")
 
     def test_disk_high_usage_alert_cleaning_after_3_fails_should_skip_filtered_sid(self):
         self.user_info[2][Mc.FIELD_FILTER_FLAG] = 'X'
@@ -186,7 +186,7 @@ class TestAlarmOperator(TestCase):
 
         calls = [warning_email_call, warning_email_call, warning_email_call, warning_email_call]
         Email.send_warning_email.assert_has_calls(calls)
-        operator._AlarmOperator__send_cleaning_message.assert_called_once_with("test_server1", "CK2", "ck2adm")
+        operator._AlarmOperator__send_cleaning_message.assert_called_once_with("test_server1", "folder2", "ck2adm")
 
     def test_cpu_high_usage_alert(self):
         operator = self.__get_mock_operator()
@@ -196,24 +196,24 @@ class TestAlarmOperator(TestCase):
         operator._AlarmOperator__operate(infos)
         Email.send_warning_email.assert_called_once_with(
             "",
-            ['employ1@test.com', 'employ2@test.com', 'employ3@test.com'],
+            ['employ3@test.com', 'employ2@test.com', 'employ1@test.com'],
             InfoType.CPU,
             'test_server1',
             {Mc.MSG_TYPE: InfoType.CPU, Mc.FIELD_SERVER_ID: 1, Mc.FIELD_SERVER_FULL_NAME: 'test_server1',
              Mc.FIELD_CHECK_ID: '20191125010101001', Mc.INFO_TOTAL: -1, Mc.INFO_FREE: 100 - self.cpu_usage,
              Mc.INFO_USAGE: [
-                 {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK1', Mc.FIELD_USER_NAME: 'ck1adm',
-                  Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_1', Mc.FIELD_EMAIL: 'employ1@test.com',
-                  Mc.FIELD_USAGE: 18 / 512},
+                 {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK3', Mc.FIELD_USER_NAME: 'ck3adm',
+                  Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_3', Mc.FIELD_EMAIL: 'employ3@test.com',
+                  Mc.FIELD_USAGE: 38 / 512},
                  {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK2', Mc.FIELD_USER_NAME: 'ck2adm',
                   Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_2', Mc.FIELD_EMAIL: 'employ2@test.com',
                   Mc.FIELD_USAGE: 28 / 512},
-                 {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK3', Mc.FIELD_USER_NAME: 'ck3adm',
-                  Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_3', Mc.FIELD_EMAIL: 'employ3@test.com',
-                  Mc.FIELD_USAGE: 38 / 512}]},
+                 {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK1', Mc.FIELD_USER_NAME: 'ck1adm',
+                  Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_1', Mc.FIELD_EMAIL: 'employ1@test.com',
+                  Mc.FIELD_USAGE: 18 / 512}]},
             'test@test.com')
 
-    @patch("alarm_operator.KafkaProducer")
+    @patch("util.KafkaProducer")
     @patch("alarm_operator.HANAMonitorDAO")
     def __get_mock_operator(self, mock_hana_dao, mock_producer):
         operator = AlarmOperator()
@@ -229,17 +229,19 @@ class TestAlarmOperator(TestCase):
             Mc.MSG_TYPE: InfoType.MEMORY, Mc.FIELD_SERVER_ID: 1, Mc.FIELD_SERVER_FULL_NAME: 'test_server1',
             Mc.FIELD_CHECK_ID: '20191125010101001', Mc.INFO_TOTAL: self.mem_total, Mc.INFO_FREE: self.mem_free,
             Mc.INFO_USAGE: [
-                {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK1', Mc.FIELD_USER_NAME: 'ck1adm',
-                 Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_1', Mc.FIELD_EMAIL: 'employ1@test.com',
-                 Mc.FIELD_USAGE: 15},
+                {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK3', Mc.FIELD_USER_NAME: 'ck3adm',
+                 Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_3', Mc.FIELD_EMAIL: 'employ3@test.com',
+                 Mc.FIELD_USAGE: 35},
                 {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK2', Mc.FIELD_USER_NAME: 'ck2adm',
                  Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_2', Mc.FIELD_EMAIL: 'employ2@test.com',
                  Mc.FIELD_USAGE: 25},
-                {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK3', Mc.FIELD_USER_NAME: 'ck3adm',
-                 Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_3', Mc.FIELD_EMAIL: 'employ3@test.com',
-                 Mc.FIELD_USAGE: 35}]}
+                {Mc.FIELD_SERVER_FULL_NAME: 'test_server1', Mc.FIELD_SID: 'CK1', Mc.FIELD_USER_NAME: 'ck1adm',
+                 Mc.FIELD_FILTER_FLAG: '', Mc.FIELD_EMPLOYEE_NAME: 'employee_1',
+                 Mc.FIELD_EMAIL: 'employ1@test.com',
+                 Mc.FIELD_USAGE: 15}]
+        }
         if filter_flag:
-            usage_info[Mc.INFO_USAGE][2][Mc.FIELD_FILTER_FLAG] = 'X'
+            usage_info[Mc.INFO_USAGE][0][Mc.FIELD_FILTER_FLAG] = 'X'
 
         return usage_info
 

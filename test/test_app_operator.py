@@ -49,7 +49,7 @@ class TestAppOperator(TestCase):
         mock_os_operator.shutdown_hana.assert_called_once()
         mock_os_operator.clean_log_backup.assert_called_once()
 
-    @patch("app_operator.KafkaConsumer")
+    @patch("util.KafkaConsumer")
     @patch("app_operator.LinuxOperator")
     def __get_mock_operator(self, mock_os_operator, mock_consumer):
         app_operator = AppOperator()

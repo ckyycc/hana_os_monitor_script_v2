@@ -353,7 +353,7 @@ class TestAnalyzer(TestCase):
 
         mock_producer.return_value.send.assert_has_calls(calls, any_order=False)  # should be sequential
 
-    @patch("analyzer.KafkaProducer")
+    @patch("util.KafkaProducer")
     def __mock_analyze(self, msg_list, mock_producer):
         infos = TestAnalyzer.__get_mock_msg_list(msg_list)
         analyzer = DataAnalyzer()
