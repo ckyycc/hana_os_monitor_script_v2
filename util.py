@@ -153,7 +153,13 @@ class MonitorConst:
     # ------ get values from configuration file ------
     @staticmethod
     def get_test_mode():
-        return MonitorConst.__config.get("monitor", "test_mode")
+        """get test mode from configuration, this is an optional config, the default value is false"""
+        try:
+            test_mode = MonitorConst.__config.get("monitor", "test_mode")
+        except configparser.NoOptionError:
+            test_mode = "false"
+
+        return test_mode
 
     @staticmethod
     def get_email_admin():
