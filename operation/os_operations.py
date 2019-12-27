@@ -90,6 +90,15 @@ class LinuxOperator:
             'find /usr/sap/{0}/HDB[0-9][0-9]/backup -name "log_backup_*.*" -mtime +10 -type f -delete'.format(sid), ssh)
         Mu.log_debug(self.__logger, "cleaned log backup for {0}.".format(sid))
 
+    def upload_file(self, ssh, source, target):
+        ftp = ssh.open_sftp()
+        try:
+            ftp.put(source, target)
+        except Exception as ex:
+            Mu.log_error(self.__logger, "Upload file failed with error: {0}".format(ex))
+        finally:
+            ftp.close()
+
 
 class SUSEOperator(LinuxOperator):
     """Operations for SUSE Linux
