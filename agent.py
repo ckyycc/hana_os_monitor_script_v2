@@ -404,18 +404,6 @@ class HANAServerOSOperatorService:
                 Mu.log_warning(self.__logger, "Parsing output failed in 'get_mem_consumers' with error:{0}, "
                                               "server:{1}, the output:{2}".format(ex, server_name, os_output))
 
-        # mem_consumers = []
-        # user_name =
-        # ["ck0adm", "ck1adm", "ck2adm", "ck3adm", "ck4adm", "ck5adm", "ck6adm", "ck7adm", "ck8adm", "ck9adm",
-        # "yy0adm", "yy1adm", "yy2adm", "yy3adm", "yy4adm", "yy5adm", "yy6adm", "yy7adm", "yy8adm", "yy9adm",
-        # "cc0adm", "cc1adm", "cc2adm", "cc3adm", "cc4adm", "cc5adm", "cc6adm", "cc7adm", "cc8adm", "cc9adm",
-        # "cy0adm", "cy1adm", "cy2adm", "cy3adm", "cy4adm", "cy5adm", "cy6adm", "cy7adm", "cy8adm", "cy9adm"]
-        # for x in range(1000):
-        #     mem_consumers.append({Mc.FIELD_USER_NAME: user_name[random.randint(0, 29)],
-        #                           Mc.FIELD_PROCESS_COMMAND: 'test_cmd{0}'.format(random.randint(0, 1000)),
-        #                           Mc.FIELD_PROCESS_ID: random.randint(1000, 2000),
-        #                           Mc.FIELD_MEM: random.randint(0, 100)})
-
         return mem_consumers
 
     def get_cpu_consumers(self, server_name):
@@ -457,17 +445,6 @@ class HANAServerOSOperatorService:
                 Mu.log_warning(self.__logger, "Parsing output failed in 'get_cpu_consumers' with error:{0}, "
                                               "server:{1}, the output:{2}".format(ex, server_name, os_output))
 
-        # cpu_consumers = []
-        # user_name =
-        # ["ck0adm", "ck1adm", "ck2adm", "ck3adm", "ck4adm", "ck5adm", "ck6adm", "ck7adm", "ck8adm", "ck9adm",
-        # "yy0adm", "yy1adm", "yy2adm", "yy3adm", "yy4adm", "yy5adm", "yy6adm", "yy7adm", "yy8adm", "yy9adm",
-        # "cc0adm", "cc1adm", "cc2adm", "cc3adm", "cc4adm", "cc5adm", "cc6adm", "cc7adm", "cc8adm", "cc9adm",
-        # "cy0adm", "cy1adm", "cy2adm", "cy3adm", "cy4adm", "cy5adm", "cy6adm", "cy7adm", "cy8adm", "cy9adm"]
-        # for x in range(1000):
-        #     cpu_consumers.append({Mc.FIELD_USER_NAME: user_name[random.randint(0, 29)],
-        #                           Mc.FIELD_PROCESS_COMMAND: 'test_cmd{0}'.format(random.randint(0, 1000)),
-        #                           Mc.FIELD_PROCESS_ID: random.randint(1000, 2000),
-        #                           Mc.FIELD_CPU: random.randint(0, 100)})
         return cpu_consumers
 
     def get_disk_consumers(self, server_name, mount_point):
@@ -509,16 +486,6 @@ class HANAServerOSOperatorService:
                                               "server: {1}, the output: {2}, "
                                               "owners: {3}".format(ex, server_name, os_output, os_output_owners))
 
-        # disk_usage_info = []
-        # user_name =
-        # ["ck0adm", "ck1adm", "ck2adm", "ck3adm", "ck4adm", "ck5adm", "ck6adm", "ck7adm", "ck8adm", "ck9adm",
-        # "yy0adm", "yy1adm", "yy2adm", "yy3adm", "yy4adm", "yy5adm", "yy6adm", "yy7adm", "yy8adm", "yy9adm",
-        # "cc0adm", "cc1adm", "cc2adm", "cc3adm", "cc4adm", "cc5adm", "cc6adm", "cc7adm", "cc8adm", "cc9adm",
-        # "cy0adm", "cy1adm", "cy2adm", "cy3adm", "cy4adm", "cy5adm", "cy6adm", "cy7adm", "cy8adm", "cy9adm"]
-        # for x in range(3):
-        #     disk_usage_info.append({Mc.FIELD_USER_NAME: user_name[random.randint(0, 29)],
-        #                             Mc.FIELD_FOLDER: 'testFolder{0}'.format(random.randint(0, 1000)),
-        #                             Mc.FIELD_DISK_USAGE_KB: random.randint(10000000, 1000000000)})
         return disk_usage_info
 
     def __get_all_hana_instance_info(self, path):
