@@ -227,6 +227,14 @@ class MonitorConst:
         return MonitorConst.__config.get("monitor.mb", "kafka_port")
 
     @staticmethod
+    def get_kafka_user():
+        return MonitorConst.__config.get("monitor.mb", "kafka_user")
+
+    @staticmethod
+    def get_kafka_password():
+        return MonitorConst.__config.get("monitor.mb", "kafka_password")
+
+    @staticmethod
     def get_agent_path():
         return MonitorConst.__config.get("monitor.agent", "agent_path")
 
@@ -933,7 +941,11 @@ class KafKaUtility:
         try:
             producer = KafkaProducer(
                 bootstrap_servers=["{0}:{1}".format(MonitorConst.get_kafka_server(), MonitorConst.get_kafka_port())],
-                value_serializer=lambda v: json.dumps(v).encode('ascii'))
+                value_serializer=lambda v: json.dumps(v).encode('ascii'),
+                security_protocol="SASL_PLAINTEXT",
+                sasl_mechanism="PLAIN",
+                sasl_plain_username=MonitorConst.get_kafka_user(),
+                sasl_plain_password=MonitorConst.get_kafka_password())
             return producer
         except Exception as ex:
             err_msg = "Get producer failed with error: {0}".format(ex)
@@ -949,13 +961,21 @@ class KafKaUtility:
                     group_id=group_id,
                     bootstrap_servers=[
                         "{0}:{1}".format(MonitorConst.get_kafka_server(), MonitorConst.get_kafka_port())],
-                    value_deserializer=lambda m: json.loads(m.decode('ascii')))
+                    value_deserializer=lambda m: json.loads(m.decode('ascii')),
+                    security_protocol="SASL_PLAINTEXT",
+                    sasl_mechanism="PLAIN",
+                    sasl_plain_username=MonitorConst.get_kafka_user(),
+                    sasl_plain_password=MonitorConst.get_kafka_password())
             else:
                 consumer = KafkaConsumer(
                     group_id=group_id,
                     bootstrap_servers=[
                         "{0}:{1}".format(MonitorConst.get_kafka_server(), MonitorConst.get_kafka_port())],
-                    value_deserializer=lambda m: json.loads(m.decode('ascii')))
+                    value_deserializer=lambda m: json.loads(m.decode('ascii')),
+                    security_protocol="SASL_PLAINTEXT",
+                    sasl_mechanism="PLAIN",
+                    sasl_plain_username=MonitorConst.get_kafka_user(),
+                    sasl_plain_password=MonitorConst.get_kafka_password())
             return consumer
         except Exception as ex:
             err_msg = "Get consumer failed with error: {0}".format(ex)
