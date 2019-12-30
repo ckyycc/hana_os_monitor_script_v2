@@ -52,7 +52,7 @@ class AlarmOperator(threading.Thread):
                 if Mc.MSG_TYPE not in msg.value or msg.value[Mc.MSG_TYPE] not in operators:
                     # update configuration
                     self.__update_configuration(msg.value)
-                    # if configuration is ready, update subscription
+                    # if configuration is ready, update subscription (all previous filtered info will be skipped)
                     if self.__check_configuration() and len(consumer.assignment()) < 2:
                         # start heartbeat checking
                         # use assign instead subscribe because the error:
@@ -477,8 +477,8 @@ class AlarmOperator(threading.Thread):
         """run the thread"""
         while True:
             consumer = Ku.get_consumer(Mc.MONITOR_GROUP_ID_ALARM)  # should be in different group with others
+            # assign configuration first
             consumer.assign(Ku.get_assignments(consumer, Mc.TOPIC_CONFIGURATION))
-            # consumer.subscribe(Mc.TOPIC_CONFIGURATION)
             self.__operate(consumer)
             Mu.log_warning(self.__logger, "Topic is empty or connection is lost. Trying to reconnect...")
 
