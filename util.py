@@ -1,3 +1,4 @@
+import fcntl
 import logging
 import logging.config
 import smtplib
@@ -594,6 +595,27 @@ class MonitorUtility:
                 MonitorUtility.log_debug(logger, "connection to {0} is closed.".format(server_name))
             else:
                 MonitorUtility.log_debug(logger, "connection is closed.")
+
+    @staticmethod
+    @contextmanager
+    def open_file_with_lock(path, *args, **kwargs):
+        """For ensuring that all file operations are atomic, treat
+        initialization like a standard call to 'open' that happens to be atomic.
+        This file opener *must* be used in a "with" block."""
+        file = None
+        try:
+            file = open(path, *args, **kwargs)
+            # Lock the opened file
+            fcntl.lockf(file, fcntl.LOCK_EX)
+            yield file
+        finally:
+            # Flush to make sure all buffered contents are written to file.
+            if file is not None:
+                file.flush()
+                os.fsync(file.fileno())
+                # Release the lock on the file.
+                fcntl.lockf(file, fcntl.LOCK_UN)
+                file.close()
 
     @staticmethod
     def process_heartbeat(logger, heartbeat_info, consumer, timeout, failure_action):

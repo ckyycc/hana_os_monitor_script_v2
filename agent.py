@@ -625,6 +625,7 @@ class Agent:
 
     def __init__(self):
         self.PID_FILE = "/tmp/monitor_agent.pid"
+        self.LOCKER_FILE = "/tmp/agent_file.locker"
         self.server_id = 0
         self.mount_point = '/usr/sap'
         self.m_frequency = 15
@@ -647,6 +648,7 @@ class Agent:
     def start(self):
         self.handle_parameters()
         self.handle_pid_file()
+
         memory_monitor = MemoryMonitor(self.server_id, self.m_frequency)
         cpu_monitor = CPUMonitor(self.server_id, self.c_frequency)
         disk_monitor = DiskMonitor(self.server_id, self.mount_point, self.d_frequency)
@@ -660,7 +662,10 @@ class Agent:
     @staticmethod
     def exit_clean_up(logger, file):
         Mu.log_info(logger, "Removing the pid file {0}.".format(file))
-        os.unlink(file)
+        try:
+            os.unlink(file)
+        except Exception as ex:
+            Mu.log_warning(logger, "Failed to remove pid file, error: {0}.".format(ex))
 
     def terminate_process(self, signal_number, frame=None):
         Mu.log_warning(self.__logger, "Received {0}, exiting...".format(signal_number))
@@ -721,44 +726,47 @@ class Agent:
         3. delete pid file before exit
         """
         pid_file = self.PID_FILE
+        locker = self.LOCKER_FILE
         # get pid for current process
         pid = str(os.getpid())
         # get current user name
         user_name = getpass.getuser()
-
-        # pid file exists
-        if os.path.isfile(pid_file):
-            Mu.log_info(self.__logger, "{0} already exists, trying to kill the previous agent".format(pid_file))
-            with open(pid_file) as f:
-                old_pid = f.read()
-                Mu.log_info(self.__logger, "checking the pid {0} of the previous agent".format(old_pid))
-                # get the process list owned by current user, started via python and have the same pid as the pid file
-                processes = subprocess.getoutput("ps -fu {0} | grep '[Pp]ython' | grep {1}".format(user_name, old_pid))
-                # retry times
-                count = 0
-                while processes and count < 10 and len(processes.strip()) > 0:
-                    Mu.log_info(self.__logger, "trying to kill the pid {0}.".format(old_pid))
-                    try:
-                        os.kill(int(old_pid), signal.SIGKILL)
-                    except ProcessLookupError as ex:
-                        Mu.log_warning(self.__logger, "Failed to kill the old agent, error: {0}".format(ex))
-
+        Mu.log_info(self.__logger, "Current PID is {0}, trying to check the pid file.".format(pid))
+        with Mu.open_file_with_lock(locker, "w"):
+            # pid file exists
+            if os.path.isfile(pid_file):
+                Mu.log_info(self.__logger, "{0} already exists, trying to kill the previous agent".format(pid_file))
+                with open(pid_file) as f:
+                    old_pid = f.read()
+                    Mu.log_info(self.__logger, "checking the pid {0} of the previous agent".format(old_pid))
+                    # get the process list owned by current user,
+                    # started via python and have the same pid as the pid file
                     processes = subprocess.getoutput(
                         "ps -fu {0} | grep '[Pp]ython' | grep {1}".format(user_name, old_pid))
-                    count += 1
+                    # retry times
+                    count = 0
+                    while count < 10 and old_pid and old_pid.strip() and processes and processes.strip():
+                        Mu.log_info(self.__logger, "trying to kill the pid {0}.".format(old_pid))
+                        try:
+                            os.kill(int(old_pid), signal.SIGKILL)
+                        except ProcessLookupError as ex:
+                            Mu.log_warning(self.__logger,
+                                           "Failed to kill the old agent (pid:{0}), error: {1}".format(old_pid, ex))
 
-                if count >= 10:
-                    Mu.log_error(self.__logger,
-                                 "Some thing wrong happened, can't kill the previous process {0}".format(old_pid))
-                    raise MonitorOSOpError(
-                        "Some thing wrong happens, can't kill the previous process {0}".format(old_pid))
-            # remove the old pid file
-            os.unlink(pid_file)
+                        processes = subprocess.getoutput(
+                            "ps -fu {0} | grep '[Pp]ython' | grep {1}".format(user_name, old_pid))
+                        count += 1
 
-        # write current pid to pid file
-        Mu.log_info(self.__logger, "trying to write the pid file {0} with pid {1}.".format(pid_file, pid))
-        with open(pid_file, "w") as f:
-            f.write(pid)
+                    if count >= 10:
+                        Mu.log_error(self.__logger,
+                                     "Some thing wrong happened, can't kill the previous process {0}".format(old_pid))
+                        raise MonitorOSOpError(
+                            "Some thing wrong happens, can't kill the previous process {0}".format(old_pid))
+
+            # write current pid to pid file
+            Mu.log_info(self.__logger, "trying to write the pid file {0} with pid {1}.".format(pid_file, pid))
+            with open(pid_file, "w") as f:
+                f.write(pid)
 
 
 if __name__ == '__main__':
