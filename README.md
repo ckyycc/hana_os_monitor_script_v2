@@ -2,12 +2,12 @@
 
 New features for v2:
 * Switch to microservices architecture;
-* Support high frequence for memroy checking (tested 5 seconds' interval);
+* Support high frequency for memory checking (tested 5 seconds' interval);
 * Add emergency shutdown for HANA instance when memory usage exceeds the emergency threshold;
 * Perform log backup cleaning for the highest disk consumer if the warning email has been sent for over three times;
 * Add heartbeat for all servers/agents.
 
-Functionalities from [hana_os_monitor_script v1](https://github.com/ckyycc/hana_os_monitor_script):
+Functions from [hana_os_monitor_script v1](https://github.com/ckyycc/hana_os_monitor_script):
 
 * Monitor and save all the resources (CPU, Disk and Memory) consumption information (to DB) for all the configured servers;
 * Send warning email to the top 5 resource consumers when the threshold of resource consumption is exceeded;
