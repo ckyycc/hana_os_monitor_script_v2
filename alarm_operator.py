@@ -186,7 +186,7 @@ class AlarmOperator(threading.Thread):
                                 Mu.log_info(self.__logger,
                                             "Try to sending email for {0} on {1}, because server "
                                             "is running out of Disk and {2} is consuming highest "
-                                            "({3}%) disk space.".format(sid, server_name, user_name, usage))
+                                            "({3}K) disk space.".format(sid, server_name, user_name, usage))
                                 Email.send_cleaning_disk_email(
                                     self.email_sender, email, sid, server_name,
                                     employee_name, admin, usage, InfoType.DISK
