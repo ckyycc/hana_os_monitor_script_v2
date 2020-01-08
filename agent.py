@@ -732,6 +732,8 @@ class Agent:
         # get current user name
         user_name = getpass.getuser()
         Mu.log_info(self.__logger, "Current PID is {0}, trying to check the pid file.".format(pid))
+        # use file locker for different file (LOCKER_FILE) instead of the pid file, because pid file will be deleted
+        # when the previous agent quit
         with Mu.open_file_with_lock(locker, "w"):
             # pid file exists
             if os.path.isfile(pid_file):
