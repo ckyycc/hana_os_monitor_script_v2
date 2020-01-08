@@ -24,8 +24,8 @@ Check out the architecture diagram for more information:
 
 Todo
 ----
-* Support manual operation (startup/shutdown) for HANA instance
-* ...
+* Support manual/scheduled operation (startup/shutdown/logbackup cleaning/...) for HANA instance
+...
 
 ## License
  [MIT](/LICENSE)
