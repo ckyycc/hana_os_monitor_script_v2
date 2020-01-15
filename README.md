@@ -2,7 +2,7 @@
 
 New features for v2:
 * Switch to microservices architecture;
-* Support high frequency for memory checking (tested 5 seconds' interval);
+* Support near real-time resource (CPU and Memory) monitoring;
 * Add emergency shutdown for HANA instance when memory usage exceeds the emergency threshold;
 * Perform log backup cleaning for the highest disk consumer if the warning email has been sent for over three times;
 * Add heartbeat for all servers/agents.
