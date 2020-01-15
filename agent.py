@@ -456,7 +456,7 @@ class HANAServerOSOperatorService:
             # changed to below solution at 2019/12/17, below solution only count the size of /usr/sap/SID
             # it's much more accurate
             "find {0} -maxdepth 1 -type d |  egrep '^{0}/[A-Z][A-Z0-9][A-Z0-9]$' | "
-            "xargs du -L --max-depth=0 2>>/dev/null".format(mount_point))
+            "xargs du -Lx --max-depth=0 2>>/dev/null".format(mount_point))
 
         os_output_owners = []
         if os_output is None:
