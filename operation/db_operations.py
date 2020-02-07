@@ -69,17 +69,22 @@ class HANAMonitorDAO:
             return []
 
         # build user string
-        user_list = ""
+        users_sql = ""
         for user in users:  # len of users might be different
-            user_list = "'{0}'".format(user) if len(user_list) == 0 else "{0},'{1}'".format(user_list, user)
+            users_sql = "SELECT '{0}' SID_USER FROM DUMMY".format(user) \
+                if len(users_sql) == 0 else "{0} UNION ALL SELECT '{1}' SID_USER FROM DUMMY".format(users_sql, user)
 
-        query = ("SELECT C.SERVER_ID, C.SERVER_FULL_NAME, A.SID, A.SID_USER, A.FILTER_FLAG, B.EMPLOYEE_NAME, B.EMAIL "
-                 "FROM HANA_OS_MONITOR.SERVER_INFO C "
-                 "LEFT JOIN ("
-                 "SELECT SERVER_ID, SID, SID_USER, EMPLOYEE_ID, FILTER_FLAG "
-                 "FROM HANA_OS_MONITOR.SID_INFO WHERE SID_USER IN ({0})) A ON A.SERVER_ID = C.SERVER_ID "
-                 "LEFT JOIN HANA_OS_MONITOR.EMPLOYEE_INFO B ON A.EMPLOYEE_ID = B.EMPLOYEE_ID "
-                 "WHERE C.SERVER_ID = {1} ".format(user_list, server_id))
+        query = ("SELECT A.SERVER_ID, A.SERVER_FULL_NAME, IFNULL(E.SID, LEFT(UPPER(A.SID_USER),3)) SID, "
+                 "A.SID_USER, E.FILTER_FLAG, E.EMPLOYEE_NAME, E.EMAIL "
+                 "FROM ("
+                 "SELECT SERVER_ID, SERVER_FULL_NAME, SID_USER FROM HANA_OS_MONITOR.SERVER_INFO , ({0}) "
+                 "WHERE SERVER_ID = {1}) A "
+                 "LEFT JOIN ( "
+                 "SELECT B.SERVER_ID, B.SID, B.SID_USER, B.FILTER_FLAG, D.EMPLOYEE_NAME, D.EMAIL "
+                 "FROM HANA_OS_MONITOR.SID_INFO B "
+                 "INNER JOIN HANA_OS_MONITOR.EMPLOYEE_INFO D ON B.EMPLOYEE_ID = D.EMPLOYEE_ID "
+                 "WHERE B.SERVER_ID = {1} "
+                 ") E ON A.SID_USER = E.SID_USER".format(users_sql, server_id))
 
         return self.__query_select(query)
 
