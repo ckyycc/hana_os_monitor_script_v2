@@ -650,7 +650,9 @@ class MonitorUtility:
             MonitorUtility.log_debug(logger, ("Heartbeat checking for {0}, current time is {1}, heartbeat "
                                               "time is {2}").format(server_id, cur_time, pre_time))
             if (cur_time - pre_time).total_seconds() >= timeout:
-                MonitorUtility.log_info(logger, "Heartbeat timeout for {0}".format(server_id))
+                MonitorUtility.log_info(logger,
+                                        ("Heartbeat timeout for {0}, current time is {1}, heartbeat time is {2}, "
+                                         "detail info:{3}").format(server_id, cur_time, pre_time, type_time.items()))
                 failure_action(server_id)
 
     @staticmethod

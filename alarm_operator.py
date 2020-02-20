@@ -149,7 +149,7 @@ class AlarmOperator(threading.Thread):
                                         for c in top5_consumers[Mc.INFO_USAGE] if c.get(Mc.FIELD_EMAIL, None)]
                             admin = self.__db_operator.get_email_admin(server_id)
                             Mu.log_debug(self.__logger,
-                                         "Server {0}:{1}Sending email to:{2}".format(server_id, msg_type, email_to))
+                                         "Server {0}:{1} Sending email to:{2}".format(server_id, msg_type, email_to))
 
                             Email.send_warning_email(self.email_sender,
                                                      email_to,
@@ -298,8 +298,8 @@ class AlarmOperator(threading.Thread):
             # update the email sending time
             self.__heartbeat_email_info[server_id] = cur_time
         else:
-            Mu.log_debug(self.__logger, ("heartbeat failed for {0}, but email is not sent due to the configured"
-                                         " email sending interval time.").format(server_id))
+            Mu.log_info(self.__logger, ("heartbeat failed for {0}, but email is not sent due to the configured"
+                                        " email sending interval time.").format(server_id))
 
     def __send_shutdown_message(self, server_name, sid, user_name):
         Mu.log_debug(
