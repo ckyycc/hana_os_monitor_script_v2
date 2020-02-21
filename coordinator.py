@@ -96,11 +96,13 @@ class MonitorCoordinator(threading.Thread):
                                      self.__configs.get("CHECK_INTERVAL_CPU_INT", 300),
                                      self.__configs.get("CHECK_INTERVAL_DISK_INT", 3600),
                                      self.__configs.get("CHECK_INTERVAL_INSTANCE_INT", 300))
+                # update restart time
+                self.__heartbeat_agent_restart_info[server_id] = datetime.now()
                 Mu.log_info(self.__logger,
                             "Restarting agent on {0} is finished.".format(server[Mc.FIELD_SERVER_FULL_NAME]))
         else:
-            Mu.log_debug(self.__logger, ("Heartbeat failed for {0}, but did not try to restart agent due to the "
-                                         "configured email sending interval time.").format(server_id))
+            Mu.log_info(self.__logger, ("Heartbeat failed for {0}, but did not try to restart agent due to the "
+                                        "configured operation interval time.").format(server_id))
 
     def __restart_agent(self, server, server_id, mount_point, agent_path,
                         mem_interval, cpu_interval, disk_interval, instance_interval):

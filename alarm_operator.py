@@ -294,9 +294,10 @@ class AlarmOperator(threading.Thread):
                 if not Mu.is_current_time_working_time(self.operation_time):
                     Mu.log_info(self.__logger, "Skip alarm operations because of the non-working time.")
                 else:
+                    # may trigger it via thread later if this operation takes long time to finish
                     Email.send_heartbeat_failure_email(self.email_sender, server[Mc.FIELD_SERVER_FULL_NAME], admin)
             # update the email sending time
-            self.__heartbeat_email_info[server_id] = cur_time
+            self.__heartbeat_email_info[server_id] = datetime.now()
         else:
             Mu.log_info(self.__logger, ("heartbeat failed for {0}, but email is not sent due to the configured"
                                         " email sending interval time.").format(server_id))

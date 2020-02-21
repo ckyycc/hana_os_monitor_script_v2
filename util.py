@@ -3,6 +3,8 @@ import logging
 import logging.config
 import smtplib
 import configparser
+import threading
+
 import rsa
 import binascii
 import os
@@ -575,10 +577,10 @@ class MonitorUtility:
     def open_ssh_connection(logger, operator, server_name, user_name, user_password):
         ssh = None
         try:
-            MonitorUtility.log_debug(logger, "Trying to connect {0} with user {1}.".format(server_name, user_name))
+            MonitorUtility.log_info(logger, "Trying to connect {0} with user {1}.".format(server_name, user_name))
             ssh = operator.open_ssh_connection(server_name, user_name, user_password)
             if ssh is not None:
-                MonitorUtility.log_debug(logger, "Connected {0}.".format(server_name))
+                MonitorUtility.log_info(logger, "Connected {0}.".format(server_name))
             yield ssh
         finally:
             MonitorUtility.close_ssh_connection(operator, ssh, logger, server_name)
@@ -586,15 +588,15 @@ class MonitorUtility:
     @staticmethod
     def close_ssh_connection(operator, ssh, logger=None, server_name=None):
         if logger is not None:
-            MonitorUtility.log_debug(logger, "Trying to close connection to {0}.".format(server_name))
+            MonitorUtility.log_info(logger, "Trying to close connection to {0}.".format(server_name))
         else:
-            MonitorUtility.log_debug(logger, "Trying to close connection")
+            MonitorUtility.log_info(logger, "Trying to close connection")
         operator.close_ssh_connection(ssh)
         if logger is not None:
             if server_name is not None:
-                MonitorUtility.log_debug(logger, "connection to {0} is closed.".format(server_name))
+                MonitorUtility.log_info(logger, "connection to {0} is closed.".format(server_name))
             else:
-                MonitorUtility.log_debug(logger, "connection is closed.")
+                MonitorUtility.log_info(logger, "connection is closed.")
 
     @staticmethod
     @contextmanager
@@ -620,7 +622,9 @@ class MonitorUtility:
     @staticmethod
     def process_heartbeat(logger, heartbeat_info, consumer, timeout, failure_action):
         heartbeat_msg_pack = consumer.poll(update_offsets=True)
-        if heartbeat_msg_pack:
+
+        while heartbeat_msg_pack:
+            MonitorUtility.log_debug(logger, "Detail of the polled message: {0}".format(heartbeat_msg_pack))
             for tp, messages in heartbeat_msg_pack.items():
                 for message in messages:
                     # Mc.FIELD_SERVER_ID: server_id, Mc.MSG_TYPE: info_type, Mc.MSG_TIME: datetime.now()})
@@ -629,12 +633,14 @@ class MonitorUtility:
                     msg_time = message.value[MonitorConst.MSG_TIME]
                     # update heartbeat info
                     try:
-                        heartbeat_info[server_id][msg_type] = MonitorUtility.get_time_via_check_id(msg_time)
+                        # get the latest time stamp for related server and message type
+                        heartbeat_info[server_id][msg_type] = max(heartbeat_info[server_id].get(msg_type, datetime.min),
+                                                                  MonitorUtility.get_time_via_check_id(msg_time))
                     except Exception as ex:
                         MonitorUtility.log_warning(logger, ("Converting heartbeat time failed with: {0}. Time is {1}, "
                                                             "message is: {2}").format(ex, msg_time, message.value))
+            heartbeat_msg_pack = consumer.poll(update_offsets=True)
 
-        # no matter there is new message or not, perform heartbeat check anyway
         MonitorUtility.__check_heartbeat_info(logger, heartbeat_info, timeout, failure_action)
         MonitorUtility.log_debug(logger, "Processing heartbeat is finished.")
 
@@ -649,11 +655,26 @@ class MonitorUtility:
 
             MonitorUtility.log_debug(logger, ("Heartbeat checking for {0}, current time is {1}, heartbeat "
                                               "time is {2}").format(server_id, cur_time, pre_time))
+
             if (cur_time - pre_time).total_seconds() >= timeout:
                 MonitorUtility.log_info(logger,
                                         ("Heartbeat timeout for {0}, current time is {1}, heartbeat time is {2}, "
                                          "detail info:{3}").format(server_id, cur_time, pre_time, type_time.items()))
-                failure_action(server_id)
+
+                # trigger failure operation via thread, because if the operation is an expensive task
+                # eg: when the server is down, ssh connection needs to wait until timeout
+                # It might cause next checking for other servers fails.
+                # TODO: This might relates to kafka's configuration, eg: max_poll_interval_ms
+                # Currently if the failure_action takes 2 minutes to finish,
+                # heartbeat_msg_pack = consumer.poll(update_offsets=True) can't get latest messages,
+                # it just returns empty, this latency keep growing and will cause all others services getting timeout
+                failure_operation = threading.Thread(target=failure_action, args=[server_id])
+                failure_operation.start()
+                # update the timestamp for related server, otherwise next check may fail again.
+                # eg: agent just restarted, no heartbeat info update
+                info[server_id][InfoType.MEMORY.value] = datetime.now()
+                MonitorUtility.log_debug(logger, ("failure_action is triggered for {0}, current time is {1}, heartbeat "
+                                                  "time is {2}").format(server_id, cur_time, pre_time))
 
     @staticmethod
     def __get_log_message(message):
