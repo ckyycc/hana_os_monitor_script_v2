@@ -87,6 +87,10 @@ class MonitorCoordinator(threading.Thread):
             servers = [s for s in self.__configs.get(Mc.DB_CONFIGURATION_SERVER, [])
                        if s[Mc.FIELD_SERVER_ID] == server_id]
             for server in servers:
+                # update restart time before restarting
+                # because restart agent takes more than 2 minutes if server is no responding
+                self.__heartbeat_agent_restart_info[server_id] = datetime.now()
+
                 Mu.log_info(self.__logger, "Restarting agent on {0}.".format(server[Mc.FIELD_SERVER_FULL_NAME]))
                 self.__restart_agent(server[Mc.FIELD_SERVER_FULL_NAME],
                                      server[Mc.FIELD_SERVER_ID],
@@ -96,8 +100,6 @@ class MonitorCoordinator(threading.Thread):
                                      self.__configs.get("CHECK_INTERVAL_CPU_INT", 300),
                                      self.__configs.get("CHECK_INTERVAL_DISK_INT", 3600),
                                      self.__configs.get("CHECK_INTERVAL_INSTANCE_INT", 300))
-                # update restart time
-                self.__heartbeat_agent_restart_info[server_id] = datetime.now()
                 Mu.log_info(self.__logger,
                             "Restarting agent on {0} is finished.".format(server[Mc.FIELD_SERVER_FULL_NAME]))
         else:
