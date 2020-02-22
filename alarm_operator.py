@@ -296,8 +296,8 @@ class AlarmOperator(threading.Thread):
                 else:
                     # may trigger it via thread later if this operation takes long time to finish
                     Email.send_heartbeat_failure_email(self.email_sender, server[Mc.FIELD_SERVER_FULL_NAME], admin)
-            # update the email sending time
-            self.__heartbeat_email_info[server_id] = datetime.now()
+                    # update the email sending time
+                    self.__heartbeat_email_info[server_id] = datetime.now()
         else:
             Mu.log_info(
                 self.__logger,
