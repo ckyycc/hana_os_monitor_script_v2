@@ -299,8 +299,12 @@ class AlarmOperator(threading.Thread):
             # update the email sending time
             self.__heartbeat_email_info[server_id] = datetime.now()
         else:
-            Mu.log_info(self.__logger, ("heartbeat failed for {0}, but email is not sent due to the configured"
-                                        " email sending interval time.").format(server_id))
+            Mu.log_info(
+                self.__logger,
+                ("heartbeat failed for {0}, but email is not sent due to the configured"
+                 " email sending interval time ({1}). (pre: {2}, cur: {3})").format(
+                    server_id, self.__heartbeat_email_interval,
+                    pre_time.strftime("%Y-%m-%d %H:%M:%S"), cur_time.strftime("%Y-%m-%d %H:%M:%S")))
 
     def __send_shutdown_message(self, server_name, sid, user_name):
         Mu.log_debug(
