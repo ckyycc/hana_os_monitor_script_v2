@@ -101,8 +101,12 @@ class MonitorCoordinator(threading.Thread):
                 Mu.log_info(self.__logger,
                             "Restarting agent on {0} is finished.".format(server[Mc.FIELD_SERVER_FULL_NAME]))
         else:
-            Mu.log_info(self.__logger, ("Heartbeat failed for {0}, but did not try to restart agent due to the "
-                                        "configured operation interval time.").format(server_id))
+            Mu.log_info(
+                self.__logger,
+                ("heartbeat failed for {0}, but did not try to restart agent due to the "
+                 "configured operation interval time ({1}). (pre: {2}, cur: {3})").format(
+                    server_id, self.__heartbeat_restart_agent_interval,
+                    pre_time.strftime("%Y-%m-%d %H:%M:%S"), cur_time.strftime("%Y-%m-%d %H:%M:%S")))
 
     def __restart_agent(self, server, server_id, mount_point, agent_path,
                         mem_interval, cpu_interval, disk_interval, instance_interval):
